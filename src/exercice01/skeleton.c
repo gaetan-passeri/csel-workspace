@@ -43,10 +43,17 @@ static int __init skeleton_init(void)
 static void __exit skeleton_exit(void)
 {
 	struct element* ele;
-	list_for_each_entry(ele, &my_list, node) {// iterate over the whole list
+	// list_for_each_entry(ele, &my_list, node) {// iterate over the whole list
+	// 	list_del(&ele->node);
+	// 	kfree(ele);
+	// 	pr_debug("element free");
+	// }
+	while(!list_empty(&my_list)){
+		ele = list_entry(my_list.next, struct element, node);
+		list_del(&ele->node);
 		kfree(ele);
 		pr_debug("element free");
-	}
+	} 
 	pr_info ("Linux module skeleton unloaded\n");
 
 }
