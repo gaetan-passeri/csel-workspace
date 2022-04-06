@@ -107,7 +107,7 @@
 
   * configurer une adresse IP manuelle de la façon suivante : 
 
-    ![IP fixe cible](img\ip_fixe_cible.png)
+    ![IP fixe cible](img/ip_fixe_cible.png)
 
     __NB : __ IPv4 subnet prefix length = 24 = addresse de sous réseau de 24 bits= _255.255.255.0_
 
