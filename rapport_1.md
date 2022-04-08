@@ -107,7 +107,10 @@
 
   * configurer une adresse IP manuelle de la façon suivante : 
 
-    ![IP fixe cible](.\img\ip_fixe_cible.png)
+    ![IP fixe cible](img\ip_fixe_cible.png)
+=======
+    ![IP fixe cible](img/ip_fixe_cible.png)
+>>>>>>> feafc8931ef10872d7d8bd424404e7bb9c4350f1
 
     __NB : __ IPv4 subnet prefix length = 24 = addresse de sous réseau de 24 bits= _255.255.255.0_
 
@@ -288,11 +291,241 @@ La première partie de ce laboratoire consistait à se servir de _Buildroot_ pou
 
 ## Résumé
 
+Ce laboratoire est constitué de 8 exercices. Ces exercices nous permettent de nous familiariser avec plusieur aspect des modules noyaux. 
+
+1. Exercice 01 : Cet exercice nous permet de voir la structure basique d'un module ainsi que sont make file associé
+
+   1. Un module à besoin au minimum d'une fonction **Init** qui sera executé lors de son chargement dans le noyau de ce dernier et d'une fonction **exit** qui elle sera exécuté au moment de sa désinstallation. 
+
+   2. la commande modinfo permet d'extraire les métatdonnées du module
+
+   3. voici les messages que nous voyons après installation et désinstallions du module
+
+      ````bas
+      [  704.967401] Linux module 01 loaded
+      [  710.109996] Linux module skeleton unloaded
+      ````
+
+   4. Les deux commandes nous affiches tout les modules installé sur la machine.
+
+   6. Pour permettre l'instalation d'un module avec la commande modprobe il faut ajouter les deux lignes suivante au Make file 
+
+      ```` makefile
+      MODPATH := $(HOME)/workspace/buildroot/output/target # production mode install:
+      $(MAKE) -C $(KDIR) M=$(PWD) INSTALL_MOD_PATH=$(MODPATH) modules_install
+      ````
+
+2. Exercice 02 : 
+
+   * Pour pouvoir passer des paramètres au module il faut ajouter les lignes suivante. 
+
+     ````c
+     #include <linux/moduleparam.h>
+     static char* text= "dummy help"; 
+     module_param(text, charp, 0);
+     static int elements= 1; module_param(elements, int, 0);
+     ````
+
+     La librairie <linux/moduleparam.h> donner accès à la macro **module_param**. Cette macro permet de définir les paramètres du module.
+
+   * Pour passer les des paramètres au module lors de l'installation 
+
+   * ````bash
+     insmod mymodule.ko elements=-1 'text="bonjour le monde"'
+     ````
+
+3. Exercice 03 :
+
+   ````bash
+   cat /proc/sys/kernel/printk
+   7		4		1		7
+   ````
+
+   Cette commande affiche les niveaux de log courant de la console. Le tableau ci-dessous nous montre la signification des valeurs.
+
+   | NOM          | String | Function    |
+   | ------------ | :----- | ----------- |
+   | KERN_EMERG   | 0      | pr_emerg()  |
+   | KERN_ALERT   | 1      | pr_alert()  |
+   | KERN_CRIT    | 2      | pr_crit()   |
+   | KERN_ERR     | 3      | pr_err()    |
+   | KERN_WARNING | 4      | pr_warn()   |
+   | KERN_NOTICE  | 5      | pr_notice() |
+   | KERN_INFO    | 6      | pr_info()   |
+   | KERN_DEBUG   | 7      | pr_debug()  |
+
+   Pour modifer ces valeurs on peut exécuter la commande suivante
+
+   ````bash
+   echo 8 > /proc/sys/kernel/printk
+   cat /proc/sys/kernel/printk
+   8		4		1		7
+   ````
+
+4. Exercice 04 :
+
+   Le code suivant permet de créer une liste.
+
+   ````c
+   static LIST_HEAD (my_list);
+   ````
+
+   La structure suivante permet de stoquer son numéro unique (id), le texte (str), ainsi que le lien vers le prochain élement de la liste.
+
+   ````c
+   struct element
+   {
+   	char *str;
+   	int id;
+   	struct list_head node;
+   };
+   ````
+
+   Le code suivant permet l'allocation mémoire dynamique des éléments ainsi que son insertion dans la liste. 
+
+   ````c
+   for(i;i < elements;i++){
+   		struct element* ele;
+   		ele = kmalloc(sizeof(*ele), GFP_KERNEL); // create a new element if (ele != NULL)
+   		ele->id = i;
+   		ele->str = text;
+   		list_add_tail(&ele->node, &my_list); // add element at the end of the list }
+   		pr_debug(" element with id %d and str %s has been added to the list",ele->id,ele->str);
+   	}
+   ````
+
+   La libération mémoire des éléments se fait avec le code ci-dessous 
+
+   ````c
+   while(!list_empty(&my_list)){
+   		ele = list_entry(my_list.next, struct element, node);
+   		list_del(&ele->node);
+   		kfree(ele);
+   		pr_debug("element free");
+   	} 
+   ````
+
+5. Exercice 05 : 
+
+6. Exercice 06 :
+
+   L'instanciation  d'un thread ce fait de la manière suivante 
+
+   ````c
+   kthread_run(thread, NULL, "EX06");
+   ````
+
+   La fonction exécuté dans le thread est la suivante
+
+   ````c
+   static int thread(void* data){
+       while (!kthread_should_stop())
+       {
+           pr_info("See you in 5 sec");
+           ssleep(5);
+       }
+       return 0;
+   }
+   ````
+
+   L'arrêt du thread se fait à la désinstallation du module de la façon suivante 
+
+   ````c
+    kthread_stop(k);
+   ````
+
+7. Exercice 07 :
+
+   Dans cette exercice l'utilisation des waitqueues était obligatoire. Pour cela deux waitqueues sont utilisées. une première initialisé statiquement et la deuxième elle est initialisée dynamiquement. 
+
+   La première waitqueues est utilisé par le premier thread pour attendre son reveil par le deuxième thread.
+
+   ````c
+   DECLARE_WAIT_QUEUE_HEAD(queue);
+   
+   static int thread(void* data){
+   
+       pr_info("Thread 1 is active");
+       while (!kthread_should_stop())
+       {
+           pr_info("Thread 1: is waiting for thread 2");
+           wait_event(queue, atomic_read(&start) != 0 || kthread_should_stop());
+           
+           pr_info("Thread 1: is active");
+           atomic_set(&start,0);
+       }
+       return 0;
+   }
+   ````
+
+   ​	**NB :** L'utilisation du variable atomic est requise, car les deux threads accèdent à cette dernière. 
+
+   La deuxième waitqueues est utilisé en mode timeout pour se reveiller toute les cinq secondes.
+
+   ````c
+   static int thread2(void* data){
+   
+       wait_queue_head_t queue_2;
+       init_waitqueue_head(&queue_2);
+   
+       pr_info("Thread 2: is active");
+       while (!kthread_should_stop())
+       {
+           int ret = wait_event_timeout(queue, kthread_should_stop(), 5*HZ);
+           if(ret == 0){
+               pr_info("Thread 2: Timeout elapsed");
+           }
+           atomic_set(&start,1);
+           wake_up(&queue);
+           pr_info("Thread 2: See you in 5 sec");
+       }
+       return 0;
+   }
+   ````
+
+8. Exercice 08 :
+
+   Dans cet exercice Il était demandé de capturer l'interruption des trois switches de la carte d'extention. 
+
+   Tout d'abord nous devons obtenir le port GPIO de la manière suivante. 
+
+   ````c
+   int status;
+   status = gpio_request(K1,k1_label);
+   status = gpio_request(K2,k2_label);
+   status = gpio_request(K3,k3_label);
+   ````
+
+   Une fois le port récupéré, nous devons attacher la fonction d'interruption sur le bon port. Pour cela il faut obtenir le vecteur d'interruption puis attacher la callback à ce vecteur tout en spécifiant le fanions de gestion des interruptions. 
+
+   ````c
+   request_irq(gpio_to_irq(K1) ,gpio_callback, IRQF_TRIGGER_FALLING, k1_label, k1_label);
+   request_irq(gpio_to_irq(K2) ,gpio_callback, IRQF_TRIGGER_FALLING, k2_label, k2_label);
+   request_irq(gpio_to_irq(K3) ,gpio_callback, IRQF_TRIGGER_FALLING, k3_label, k3_label);
+   ````
+
+   La callback d'interruption ne fait qu'afficher le switche sur le quel l'appuis a été fait.
+
+   ````c
+   irqreturn_t gpio_callback(int irq, void *dev_id){
+       
+       pr_info("interrupt %s: rise",(char*) dev_id);
+       
+       return IRQ_HANDLED;
+   }
+   ````
+
 ## Questions
+
+Ce la boratoire ne possédait aucune question en plus des exercices vu dans la section précédente.
 
 ## Etat d'avancement / compréhension
 
+L'utilisation et l'implémentation des modules ont été parfaitement comprise, par le groupe. Les notions de multi threading, mise en sommeil à l'aide de waitqueues et liste d'éléments ont été parfaitement comprise. Cependant, la lecture de registre (exercice 5) devra être plus approfondie de notre côté. 
+
 ## Retour personnel sur le laboratoire
+
+Les exercices proposés lors de ce laboratoire étaient très intéressants. Avoir la correction rapidement nous a permis d'améliorer notre compréhension des différents sujets abordés. 
 
 # 3. Pilotes de périphériques (du 25.03 au 01.04)
 
