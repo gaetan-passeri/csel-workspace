@@ -58,6 +58,6 @@ static void __exit skeleton_exit(void)
 module_init (skeleton_init);
 module_exit (skeleton_exit);
 
-MODULE_AUTHOR ("Daniel Gachet <daniel.gachet@hefr.ch>");
-MODULE_DESCRIPTION ("Module skeleton");
+MODULE_AUTHOR ("Glenn Muller <glenn.mullerar@hes-so.ch>");
+MODULE_DESCRIPTION ("Module Exercice08");
 MODULE_LICENSE ("GPL");

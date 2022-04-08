@@ -4,29 +4,21 @@
 #include <linux/kernel.h>	// needed for debugging
 
 #include <linux/moduleparam.h>	// needed for module parameters
-#include <linux/kthread.h>
-#include <linux/delay.h>
 
-struct task_struct* k;
+static char* text = "dummy text";
+module_param(text, charp, 0664);
+static int  elements = 1;
+module_param(elements, int, 0);
 
-static int thread(void* data){
-    while (!kthread_should_stop())
-    {
-        pr_info("See you in 5 sec");
-        ssleep(5);
-    }
-    return 0;
-}
 static int __init skeleton_init(void)
 {
-	pr_info ("Linux module 06 loaded\n");
-	k = kthread_run(thread, NULL, "EX06");
+	pr_info ("Linux module 01 skeleton loaded\n");
+	pr_debug ("  text: %s\n  elements: %d\n", text, elements);
 	return 0;
 }
 
 static void __exit skeleton_exit(void)
 {
-    kthread_stop(k);
 	pr_info ("Linux module skeleton unloaded\n");
 }
 
@@ -34,5 +26,5 @@ module_init (skeleton_init);
 module_exit (skeleton_exit);
 
 MODULE_AUTHOR ("Glenn Muller <glenn.mullerar@hes-so.ch>");
-MODULE_DESCRIPTION ("Module Exercice06");
+MODULE_DESCRIPTION ("Module skeleton");
 MODULE_LICENSE ("GPL");
