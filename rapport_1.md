@@ -288,24 +288,24 @@ La première partie de ce laboratoire consistait à se servir de _Buildroot_ pou
 
 ## Résumé
 
-Ce laboratoire est constitué de 8 exercices. Ces exercices nous permettent de nous familiariser avec plusieur aspect des modules noyaux. 
+Ce laboratoire est constitué de 8 exercices. Ces exercices nous permettent de nous familiariser avec plusieurs aspects des modules noyaux. 
 
-1. Exercice 01 : Cet exercice nous permet de voir la structure basique d'un module ainsi que sont make file associé
+1. Exercice 01 : Cet exercice nous permet de voir la structure basique d'un module ainsi que son makefile associé
 
-   1. Un module à besoin au minimum d'une fonction **Init** qui sera executé lors de son chargement dans le noyau de ce dernier et d'une fonction **exit** qui elle sera exécuté au moment de sa désinstallation. 
+   1. Un module a besoin, au minimum, d'une fonction **Init** qui sera exécutée lors de son chargement dans le noyau de ce dernier et d'une fonction **exit** qui, elle, sera exécutée au moment de sa désinstallation. 
 
-   2. la commande modinfo permet d'extraire les métatdonnées du module
+   2. La commande modinfo permet d'extraire les métadonnées du module.
 
-   3. voici les messages que nous voyons après installation et désinstallions du module
+   3. Voici les messages que nous voyons après installation et désinstallation du module :
 
-      ````bas
+      ````bash
       [  704.967401] Linux module 01 loaded
       [  710.109996] Linux module skeleton unloaded
       ````
 
-   4. Les deux commandes nous affiches tout les modules installé sur la machine.
+   4. Les deux commandes nous affichent tous les modules installés sur la machine.
 
-   6. Pour permettre l'instalation d'un module avec la commande modprobe il faut ajouter les deux lignes suivante au Make file 
+   6. Pour permettre l'installation d'un module avec la commande modprobe, il faut ajouter les deux lignes suivante au Makefile :  
 
       ```` makefile
       MODPATH := $(HOME)/workspace/buildroot/output/target # production mode install:
@@ -314,7 +314,7 @@ Ce laboratoire est constitué de 8 exercices. Ces exercices nous permettent de n
 
 2. Exercice 02 : 
 
-   * Pour pouvoir passer des paramètres au module il faut ajouter les lignes suivante. 
+   *  Pour pouvoir passer des paramètres au module, il faut ajouter les lignes suivantes :
 
      ````c
      #include <linux/moduleparam.h>
@@ -323,11 +323,11 @@ Ce laboratoire est constitué de 8 exercices. Ces exercices nous permettent de n
      static int elements= 1; module_param(elements, int, 0);
      ````
 
-     La librairie <linux/moduleparam.h> donner accès à la macro **module_param**. Cette macro permet de définir les paramètres du module.
+     La librairie <linux/moduleparam.h> donne accès à la macro **module_param**. Cette macro permet de définir les paramètres du module.
 
-   * Pour passer les des paramètres au module lors de l'installation 
+   * Pour passer des paramètres au module lors de l'installation : 
 
-   * ````bash
+     ````bash
      insmod mymodule.ko elements=-1 'text="bonjour le monde"'
      ````
 
@@ -338,7 +338,7 @@ Ce laboratoire est constitué de 8 exercices. Ces exercices nous permettent de n
    7		4		1		7
    ````
 
-   Cette commande affiche les niveaux de log courant de la console. Le tableau ci-dessous nous montre la signification des valeurs.
+   Cette commande affiche les niveaux de log courant de la console. Le tableau ci-dessous nous montre la signification des ces valeurs : 
 
    | NOM          | String | Function    |
    | ------------ | :----- | ----------- |
@@ -351,7 +351,7 @@ Ce laboratoire est constitué de 8 exercices. Ces exercices nous permettent de n
    | KERN_INFO    | 6      | pr_info()   |
    | KERN_DEBUG   | 7      | pr_debug()  |
 
-   Pour modifer ces valeurs on peut exécuter la commande suivante
+   Pour modifier ces valeurs, on peut exécuter la commande suivante : 
 
    ````bash
    echo 8 > /proc/sys/kernel/printk
@@ -361,13 +361,13 @@ Ce laboratoire est constitué de 8 exercices. Ces exercices nous permettent de n
 
 4. Exercice 04 :
 
-   Le code suivant permet de créer une liste.
+   Le code suivant permet de créer une liste : 
 
    ````c
    static LIST_HEAD (my_list);
    ````
 
-   La structure suivante permet de stoquer son numéro unique (id), le texte (str), ainsi que le lien vers le prochain élement de la liste.
+   La structure suivante permet de stocker son numéro unique (id), le texte (str), ainsi que le lien vers le prochain élément de la liste : 
 
    ````c
    struct element
@@ -378,7 +378,7 @@ Ce laboratoire est constitué de 8 exercices. Ces exercices nous permettent de n
    };
    ````
 
-   Le code suivant permet l'allocation mémoire dynamique des éléments ainsi que son insertion dans la liste. 
+   Le code suivant permet l'allocation mémoire dynamique des éléments ainsi que son insertion dans la liste : 
 
    ````c
    for(i;i < elements;i++){
@@ -391,7 +391,7 @@ Ce laboratoire est constitué de 8 exercices. Ces exercices nous permettent de n
    	}
    ````
 
-   La libération mémoire des éléments se fait avec le code ci-dessous 
+   La libération mémoire des éléments se fait avec le code ci-dessous : 
 
    ````c
    while(!list_empty(&my_list)){
@@ -404,15 +404,50 @@ Ce laboratoire est constitué de 8 exercices. Ces exercices nous permettent de n
 
 5. Exercice 05 : 
 
+   Pour pouvoir accéder aux registres d'un périphérique il faut demander l'accès mémoire à une région au noyeau linux. Pour cela il faut utiliser la fonction suivante : 
+
+   ````c
+   res[0] = request_mem_region(CHIP_ID_ADD, 0x1000, "allwiner sid");
+   res[1] = request_mem_region(TEMP_CPU_ADD, 0x1000, "allwiner h5 ths");	
+   res[2] = request_mem_region(MACC_ADD, 0x1000, "allwiner h5 emac");
+   ````
+
+   Une fois cette demande effectuée il faut transférer les adresses mémoire du noyau sur la mémoire virtuel.
+
+   ````c
+   reg_chipid = ioremap(CHIP_ID_ADD, 0x1000);
+   reg_temp_sensor = ioremap(TEMP_CPU_ADD, 0x1000);
+   reg_mac = ioremap(MACC_ADD, 0x1000);
+   ````
+
+   Une fois avoir mappé les addresses dans la mémoire virtuel, il est possible de lire et écrire à ces addresses. Dans ce labo on ne fait que de la lecture.
+
+   ````c
+   chipid[0] = ioread32(reg_chipid+0x200);
+   chipid[1] = ioread32(reg_chipid+0x204);
+   chipid[2] = ioread32(reg_chipid+0x208);
+   chipid[3] = ioread32(reg_chipid+0x20c);
+   ````
+
+   Dans l'exemple au-dessus on vient lire les 4 registres du Chip ID.
+
+   Une fois que on a fini d'utiliser les registres périphérique il faut libérer les espaces mémoire. Cela se fait lors de la désinstallation du module de la manière suivante : 
+
+   ````c
+   release_mem_region(CHIP_ID_ADD, 0x1000);
+   release_mem_region(TEMP_CPU_ADD, 0x1000);
+   release_mem_region(MACC_ADD, 0x1000);
+   ````
+
 6. Exercice 06 :
 
-   L'instanciation  d'un thread ce fait de la manière suivante 
+   L'instanciation d'un thread se fait de la manière suivante :
 
    ````c
    kthread_run(thread, NULL, "EX06");
    ````
 
-   La fonction exécuté dans le thread est la suivante
+   La fonction exécutée dans le thread est la suivante : 
 
    ````c
    static int thread(void* data){
@@ -425,7 +460,7 @@ Ce laboratoire est constitué de 8 exercices. Ces exercices nous permettent de n
    }
    ````
 
-   L'arrêt du thread se fait à la désinstallation du module de la façon suivante 
+   L'arrêt du thread se fait à la désinstallation du module de la façon suivante :
 
    ````c
     kthread_stop(k);
@@ -433,9 +468,9 @@ Ce laboratoire est constitué de 8 exercices. Ces exercices nous permettent de n
 
 7. Exercice 07 :
 
-   Dans cette exercice l'utilisation des waitqueues était obligatoire. Pour cela deux waitqueues sont utilisées. une première initialisé statiquement et la deuxième elle est initialisée dynamiquement. 
+   Dans cette exercice, l'utilisation des waitqueues était obligatoire. Pour cela, deux waitqueues sont utilisées. La première est initialisée statiquement, tandis que la deuxième est initialisée dynamiquement. 
 
-   La première waitqueues est utilisé par le premier thread pour attendre son reveil par le deuxième thread.
+   La première waitqueues est utilisée par le premier thread pour attendre son réveil par le deuxième thread.
 
    ````c
    DECLARE_WAIT_QUEUE_HEAD(queue);
@@ -457,7 +492,7 @@ Ce laboratoire est constitué de 8 exercices. Ces exercices nous permettent de n
 
    ​	**NB :** L'utilisation du variable atomic est requise, car les deux threads accèdent à cette dernière. 
 
-   La deuxième waitqueues est utilisé en mode timeout pour se reveiller toute les cinq secondes.
+   ​      La deuxième waitqueues est utilisée en mode timeout pour se réveiller toute les 5 secondes.
 
    ````c
    static int thread2(void* data){
@@ -482,9 +517,9 @@ Ce laboratoire est constitué de 8 exercices. Ces exercices nous permettent de n
 
 8. Exercice 08 :
 
-   Dans cet exercice Il était demandé de capturer l'interruption des trois switches de la carte d'extention. 
+   Dans cet exercice, il était demandé de capturer l'interruption des trois switches de la carte d'extension. 
 
-   Tout d'abord nous devons obtenir le port GPIO de la manière suivante. 
+   Tout d'abord, nous devons obtenir le port GPIO de la manière suivante : 
 
    ````c
    int status;
@@ -493,7 +528,7 @@ Ce laboratoire est constitué de 8 exercices. Ces exercices nous permettent de n
    status = gpio_request(K3,k3_label);
    ````
 
-   Une fois le port récupéré, nous devons attacher la fonction d'interruption sur le bon port. Pour cela il faut obtenir le vecteur d'interruption puis attacher la callback à ce vecteur tout en spécifiant le fanions de gestion des interruptions. 
+   Une fois le port récupéré, nous devons attacher la fonction d'interruption sur le bon port. Pour cela, il faut obtenir le vecteur d'interruption, puis attacher la callback à ce vecteur tout en spécifiant le fanion de gestion des interruptions. 
 
    ````c
    request_irq(gpio_to_irq(K1) ,gpio_callback, IRQF_TRIGGER_FALLING, k1_label, k1_label);
@@ -501,7 +536,7 @@ Ce laboratoire est constitué de 8 exercices. Ces exercices nous permettent de n
    request_irq(gpio_to_irq(K3) ,gpio_callback, IRQF_TRIGGER_FALLING, k3_label, k3_label);
    ````
 
-   La callback d'interruption ne fait qu'afficher le switche sur le quel l'appuis a été fait.
+   La callback d'interruption ne fait qu'afficher le switche sur lequel l'appuis a été fait.
 
    ````c
    irqreturn_t gpio_callback(int irq, void *dev_id){
@@ -514,11 +549,11 @@ Ce laboratoire est constitué de 8 exercices. Ces exercices nous permettent de n
 
 ## Questions
 
-Ce la boratoire ne possédait aucune question en plus des exercices vu dans la section précédente.
+Ce laboratoire ne possédait aucune question en plus des exercices vu dans la section précédente.
 
 ## Etat d'avancement / compréhension
 
-L'utilisation et l'implémentation des modules ont été parfaitement comprise, par le groupe. Les notions de multi threading, mise en sommeil à l'aide de waitqueues et liste d'éléments ont été parfaitement comprise. Cependant, la lecture de registre (exercice 5) devra être plus approfondie de notre côté. 
+L'utilisation et l'implémentation des modules ont été parfaitement comprises par le groupe. Les notions de multi threading, mise en sommeil à l'aide de waitqueues et listes d'éléments,  ont été parfaitement comprises. Cependant, la lecture de registre (exercice 5) devra être plus approfondie de notre côté. 
 
 ## Retour personnel sur le laboratoire
 
