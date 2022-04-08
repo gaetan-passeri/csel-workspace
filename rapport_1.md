@@ -605,7 +605,7 @@ Une fois la zone mémoire mappée, elle est accessible à l'emplacement `/dev/me
 
 Un pilote orienté caractères permet d'interagir avec des périphériques de façon assez simple. Il faut faire la distinction entre le pilote, qui est le programme permettant de piloter un ou plusieurs périphériques de même type, et le périphérique ou _device_, qui est une instance du pilote dédiée à la gestion d'un objet matériel. L'échange de données entre l'instance du pilote et le périphérique matériel se fait au travers de fichiers virtuels créés par le pilote.
 
-#### Mise en place du pilote
+#### Structure du pilote
 
 * inclusion des bibliothèques nécessaires
 
@@ -698,7 +698,133 @@ Un pilote orienté caractères permet d'interagir avec des périphériques de fa
   }
   ```
 
-* 
+#### Méthode Read
+
+La méthode `skeleton_read` implémentée dans le code du pilote écrit les données nécessaires dans le buffer de l'espace utilisateur. Elle prends en paramètre :
+
+* le descripteur du fichier ouvert dans l'espace utilisateur
+* le pointeur vers le buffer de destination
+* la quantité d'octets maximale à écrire dans l'espace utilisateur
+* offset d'écriture (les _n_ premiers octets avant ceux qu'on envoi à l'utilisateur)
+
+La méthode met à jour la valeur de l'offset afin de ne pas envoyer plusieurs fois les mêmes données à l'utilisateur. Elle retourne ensuite le nombre d'octets qu'elle y a écrit.
+
+```c
+static ssize_t skeleton_read(struct file* f, char __user* buf, size_t count, loff_t* off) {
+    // compute remaining bytes to copy, update count and pointers
+    ssize_t remaining = BUFFER_SZ - (ssize_t)(*off);
+    
+    // init. read ptr
+    char* ptr = s_buffer + *off;
+    
+    // protect reading against buffer overflow
+    if (count > remaining) count = remaining;
+    
+    // compute future return count
+    *off += count;
+    
+    // copy required number of bytes
+    if (copy_to_user(buf, ptr, count) != 0) count = -EFAULT; // EFAULT = bad adress
+    // NB : copy_to_user retourne le nombre d'octets qui n'ont pas pu êtres copiés!
+
+    return count; // retourne le nombre d'octets écris dans l'espace utilisateur
+}
+```
+
+#### Méthode Write
+
+La méthode `skeleton_write` copie les données de l'espace utilisateur vers le buffer instancié dans le code du pilote.
+
+La méthode doit prendre en considération la taille maximale du buffer du pilote afin d'éviter un éventuel débordement. Elle retourne le nombre d'octets copiés dans le buffer.
+
+```c
+static ssize_t skeleton_write(struct file* f, const char __user* buf, size_t count, loff_t* off) {
+
+    ssize_t remaining = BUFFER_SZ - (ssize_t)(*off);
+    pr_info("skeleton: at%ld\n", (unsigned long)(*off));
+
+    // check if still remaining space to store additional bytes
+    if (count >= remaining) count = -EIO;
+
+    if(count > 0){
+        char* ptr = s_buffer + *off;
+        *off += count;    
+        ptr[count] = 0; // make sure string is null terminated
+        if(copy_from_user(ptr, buf, count)) count = -EFAULT;
+    }
+
+    pr_info("skeleton: write operation... written=%ld\n", count);
+
+    return count; // retourne le nombre d'octets copiés
+}
+```
+
+#### Création du fichier d'accès au périphérique dans le répertoire `/dev`
+
+Après avoir chargé le pilote, il faut créer le fichier à l'aide de la commande `mknod`
+
+```bash
+mknod /dev/mymodule c 511 0
+```
+
+* __c__ : type de périphérique caractère
+* __511__ : numéro majeur
+* __0__ : numéro mineur
+
+#### données privées d'instance
+
+le descripteur de fichier contient un pointeur `private_data` qui peut être initialisé pour pointer sur un espace de données dans le pilote. Ceci permet d'attribuer un espace de donnée propre à chaque instance du pilote.
+
+Pour ce faire, il faut :
+
+* déclarer __en global__ un pointeur de pointeur pour le tableau de buffers
+
+  ```c
+  #define BUFFER_SZ 1000
+  static char** buffers = 0;
+  ```
+
+* définir un nombre d'instance, un paramètre de module peut être utiliser pour rendre ce nombre configurable
+
+  ```c
+  static int instances = 3;
+  module_param(instances, int, 0);
+  ```
+
+* lors de l'initialisation du pilote, créer un tableau de buffers dynamique en fonction du nombre d'instances :
+
+  ```c
+  if(status == 0){
+      buffers = kzalloc(instances * sizeof(char*), GFP_KERNEL);
+      for(i=0; i<instances; i++){
+          buffers[i] = kzalloc (BUFFER_SZ, GFP_KERNEL);
+      }
+  }
+  ```
+
+* dans la méthode `open`, il faut initialiser le pointeur `private_data` du descripteur de fichier pour le faire pointer sur le buffer correspondant à l'instance que l'utilisateur a ouvert :
+
+  ```c
+  f->private_data = buffers[iminor(i)];
+  pr_info("skeleton: private_data=%p\n", f->private_data);
+  ```
+
+  __NB__ : la méthode `iminor(struct inode* i)` renvoi le numéro mineur de l'instance (entre _0_ et _instances_)
+
+* lors d'opérations de lecture / écriture, il faut se référer au pointeur configuré pour l'instance lors de l'ouverture du fichier
+
+  ```c
+  char* ptr = (char*) f->private_data + *off;
+  ```
+
+* enfin, lors du déchargement du module, il faut libérer la mémoire allouée pour le tableau de buffers
+
+  ```c
+  for(i=0; i<instances; i++) kfree(buffers[i]);
+  kfree(buffers);
+  ```
+
+__NB__ : il ne faut pas oublier d'initialiser le nombre correct d'instances dans la structure `dev_t skeleton_dev` lors du chargement et du déchargement du module.
 
 ### Sysfs
 
