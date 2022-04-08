@@ -109,7 +109,7 @@
 
     ![IP fixe cible](img/ip_fixe_cible.png)
 
-    __NB : __ IPv4 subnet prefix length = 24 = addresse de sous réseau de 24 bits= _255.255.255.0_
+	__NB : __ IPv4 subnet prefix length = 24 = addresse de sous réseau de 24 bits= _255.255.255.0_
 
 * Depuis la machine de développement, vérifier que la connexion fonctionne : `ping 192.168.0.14`
 
@@ -562,6 +562,307 @@ Les exercices proposés lors de ce laboratoire étaient très intéressants. Avo
 # 3. Pilotes de périphériques (du 25.03 au 01.04)
 
 ## Résumé
+
+### Pilotes orientés mémoire
+
+Les pilotes orientés mémoire permettent de mapper des zones de la mémoire physique du processeur sur une zone de mémoire virtuelle nécessaire au pilotage de périphériques. Ces pilotes se développent en zone utilisateur. Pour ce faire, on emploi l'opération `mmap`, disponible en intégrant la bibliothèque `<sys/mman.h>`.
+
+Une fois la zone mémoire mappée, elle est accessible à l'emplacement `/dev/mem`.
+
+#### Mise en place du pilote
+
+* inclusion de la bibliothèque
+
+  ```c
+  #include <sys/mman.h>
+  ```
+
+* ouverture du fichier `/dev/mem`
+
+  ```c
+  int fd = open("/dev/mem", O_RDWR);
+  if (fd < 0) {
+      printf("Could not open /dev/mem: error=%i\n", fd);
+  	return -1;
+  }
+  ```
+
+* _mapping_ de la mémoire afin de rendre des registres du processeur accessibles depuis la mémoire virtuelle (les commentaires détaillent les opérations effectuées)
+
+  ```c
+  size_t psz     = getpagesize();		// récupération de la taille d'une page mémoire
+  off_t dev_addr = 0x01c14200;		// adresse du début des registres que l'on souhaite récupérer
+  off_t ofs      = dev_addr % psz;	// nombre d'octets d'écart entre l'adresse de nos registres et le début d'une nouvelle page
+  								 // (on souhaite récuperer une page entière!)
+  off_t offset   = dev_addr - ofs;	// adresse du début de la page dans laquelle se trouvent ces registres 						
+  
+  volatile uint32_t* regs = mmap (
+      0,					 	// void* addr		=> généralement NULL, adresse de départ en mémoire virtuelle
+      psz,					// size_t length	=> taille de la zone à placer en mémoire virtuelle ( => taille d'une page entière)
+      PROT_READ | PROT_WRITE,	  // int prot		  => droits d’accès à la mémoire: read, write, execute
+      MAP_SHARED,				// int flags		 => visibilité de la page pour d’autres processus: shared, private
+      fd,	 					// int fd		    => descripteur du fichier correspondant au pilote
+      offset					// off_t offset		=> début de la zone mémoire à placer en mémoire virtuelle
+  ); 
+  ```
+
+* opérations souhaitées sur le périphérique à l'aide de l'adresse virtuelle retournée par `mmap`
+
+  ```c
+  // contrôle du pointeur retourné par `mmap`
+  if (regs == MAP_FAILED) {  // (void *)-1
+      printf("mmap failed, error: %i:%s \n", errno, strerror(errno));
+      return -1;
+  }
+  
+  // copie des valeurs en RAM pour utilisation dans le programme
+  uint32_t chipid[4] = {
+      [0] = *(regs + (ofs + 0x00) / sizeof(uint32_t)),
+      [1] = *(regs + (ofs + 0x04) / sizeof(uint32_t)),
+      [2] = *(regs + (ofs + 0x08) / sizeof(uint32_t)),
+      [3] = *(regs + (ofs + 0x0c) / sizeof(uint32_t)),
+  };
+  ```
+
+* libération de l'espace mémoire avec la fonction `munmap`
+
+  ```c
+  munmap((void*)regs, psz);
+  ```
+
+* fermeture du fichier virtuel
+
+  ```c
+  close(fd);
+  ```
+
+### Pilotes orientés caractères
+
+Un pilote orienté caractères permet d'interagir avec des périphériques de façon assez simple. Il faut faire la distinction entre le pilote, qui est le programme permettant de piloter un ou plusieurs périphériques de même type, et le périphérique ou _device_, qui est une instance du pilote dédiée à la gestion d'un objet matériel. L'échange de données entre l'instance du pilote et le périphérique matériel se fait au travers de fichiers virtuels créés par le pilote.
+
+#### Structure du pilote
+
+* inclusion des bibliothèques nécessaires
+
+  ```c
+  #include <linux/cdev.h>        /* needed for char device driver */
+  #include <linux/fs.h>          /* needed for device drivers */
+  #include <linux/init.h>        /* needed for macros */
+  #include <linux/kernel.h>      /* needed for debugging */
+  #include <linux/module.h>      /* needed by all modules */
+  #include <linux/moduleparam.h> /* needed for module parameters */
+  #include <linux/uaccess.h>     /* needed to copy data to/from user */
+  ```
+
+* déclaration de l'objet `dev_t` permettant de définir le numéro de pilote
+
+  ```c
+  static dev_t skeleton_dev;
+  ```
+
+  Le numéro de pilote est constitué de :
+
+  * numéro majeur de 12 bits
+  * numéro mineur de 20 bits
+
+  Il est réservé dynamiquement lors du chargement du pilote, à l'aide de la fonction `alloc_chrdev_region`
+
+* déclaration de la structure `skeleton_cdev` permettant l'enregistrement du pilote caractère dans le noyau
+
+  ```c
+  static struct cdev skeleton_cdev;
+  ```
+
+  Lors du chargement du pilote, la structure `cdev` est :
+
+  * initialisée à l'aide de la méthode `cdev_init`
+  * enregistrée dans le noyau à l'aide de la méthode `cdev_add`
+
+* définition de la structure de fichier
+
+  ```c
+  static struct file_operations skeleton_fops = {
+      .owner   = THIS_MODULE,
+      .open    = skeleton_open,
+      .read    = skeleton_read,
+      .write   = skeleton_write,
+      .release = skeleton_release,
+  };
+  ```
+
+  Chaque attribut que l'on souhaite utiliser dans le pilote doit être initialisé à l'aide d'un pointeur vers une fonction implémentée dans le code du pilote.
+
+* Lors de l'initialisation du module (`skeleton_init`), il faut réserver dynamiquement le numéro du pilote et enregistrer le pilote dans le noyau :
+
+  ```c
+  static int __init skeleton_init(void) {
+      // Réservation dynamique du numéro de pilote
+      int status = alloc_chrdev_region(
+          &skeleton_dev,	// instance dev_t
+          0,			   // base_minor : premier numéro mineur du pilote
+          1,			   // count : le nombre de numéros mineurs requis par le pilote
+          "mymodule"	    // nom du pilote de périphérique
+      );
+      
+      if (status == 0) {
+          // enregistrement du pilote dans le noyau
+          //	=> association entre les numéros majeurs / mineurs et les opérations de fichies attachées au pilote
+          cdev_init(&skeleton_cdev, &skeleton_fops);
+          skeleton_cdev.owner = THIS_MODULE;
+          status = cdev_add(
+              &skeleton_cdev,	// pointeur sur la structure du pilote
+              skeleton_dev,	// numéro du pilote
+              1			   // count : indique le nombre de périphériques
+          );
+      }
+  
+      pr_info("Linux module skeleton loaded\n");
+      return 0;
+  }
+  ```
+
+* Lors du déchargement du pilote, il faut éliminer le pilote dans le noyau et libérer les numéros majeur et mineur du pilote.
+
+  ```c
+  static void __exit skeleton_exit(void) {
+      // élimination du pilote dans le noyau
+      cdev_del(&skeleton_cdev);
+      // libération des numéros (majeurs/mineurs) du pilote
+      unregister_chrdev_region(skeleton_dev, 1);
+      pr_info("Linux module skeleton unloaded\n");
+  }
+  ```
+
+#### Méthode Read
+
+La méthode `skeleton_read` implémentée dans le code du pilote écrit les données nécessaires dans le buffer de l'espace utilisateur. Elle prends en paramètre :
+
+* le descripteur du fichier ouvert dans l'espace utilisateur
+* le pointeur vers le buffer de destination
+* la quantité d'octets maximale à écrire dans l'espace utilisateur
+* offset d'écriture (les _n_ premiers octets avant ceux qu'on envoi à l'utilisateur)
+
+La méthode met à jour la valeur de l'offset afin de ne pas envoyer plusieurs fois les mêmes données à l'utilisateur. Elle retourne ensuite le nombre d'octets qu'elle y a écrit.
+
+```c
+static ssize_t skeleton_read(struct file* f, char __user* buf, size_t count, loff_t* off) {
+    // compute remaining bytes to copy, update count and pointers
+    ssize_t remaining = BUFFER_SZ - (ssize_t)(*off);
+    
+    // init. read ptr
+    char* ptr = s_buffer + *off;
+    
+    // protect reading against buffer overflow
+    if (count > remaining) count = remaining;
+    
+    // compute future return count
+    *off += count;
+    
+    // copy required number of bytes
+    if (copy_to_user(buf, ptr, count) != 0) count = -EFAULT; // EFAULT = bad adress
+    // NB : copy_to_user retourne le nombre d'octets qui n'ont pas pu êtres copiés!
+
+    return count; // retourne le nombre d'octets écris dans l'espace utilisateur
+}
+```
+
+#### Méthode Write
+
+La méthode `skeleton_write` copie les données de l'espace utilisateur vers le buffer instancié dans le code du pilote.
+
+La méthode doit prendre en considération la taille maximale du buffer du pilote afin d'éviter un éventuel débordement. Elle retourne le nombre d'octets copiés dans le buffer.
+
+```c
+static ssize_t skeleton_write(struct file* f, const char __user* buf, size_t count, loff_t* off) {
+
+    ssize_t remaining = BUFFER_SZ - (ssize_t)(*off);
+    pr_info("skeleton: at%ld\n", (unsigned long)(*off));
+
+    // check if still remaining space to store additional bytes
+    if (count >= remaining) count = -EIO;
+
+    if(count > 0){
+        char* ptr = s_buffer + *off;
+        *off += count;    
+        ptr[count] = 0; // make sure string is null terminated
+        if(copy_from_user(ptr, buf, count)) count = -EFAULT;
+    }
+
+    pr_info("skeleton: write operation... written=%ld\n", count);
+
+    return count; // retourne le nombre d'octets copiés
+}
+```
+
+#### Création du fichier d'accès au périphérique dans le répertoire `/dev`
+
+Après avoir chargé le pilote, il faut créer le fichier à l'aide de la commande `mknod`
+
+```bash
+mknod /dev/mymodule c 511 0
+```
+
+* __c__ : type de périphérique caractère
+* __511__ : numéro majeur
+* __0__ : numéro mineur
+
+#### données privées d'instance
+
+le descripteur de fichier contient un pointeur `private_data` qui peut être initialisé pour pointer sur un espace de données dans le pilote. Ceci permet d'attribuer un espace de donnée propre à chaque instance du pilote.
+
+Pour ce faire, il faut :
+
+* déclarer __en global__ un pointeur de pointeur pour le tableau de buffers
+
+  ```c
+  #define BUFFER_SZ 1000
+  static char** buffers = 0;
+  ```
+
+* définir un nombre d'instance, un paramètre de module peut être utiliser pour rendre ce nombre configurable
+
+  ```c
+  static int instances = 3;
+  module_param(instances, int, 0);
+  ```
+
+* lors de l'initialisation du pilote, créer un tableau de buffers dynamique en fonction du nombre d'instances :
+
+  ```c
+  if(status == 0){
+      buffers = kzalloc(instances * sizeof(char*), GFP_KERNEL);
+      for(i=0; i<instances; i++){
+          buffers[i] = kzalloc (BUFFER_SZ, GFP_KERNEL);
+      }
+  }
+  ```
+
+* dans la méthode `open`, il faut initialiser le pointeur `private_data` du descripteur de fichier pour le faire pointer sur le buffer correspondant à l'instance que l'utilisateur a ouvert :
+
+  ```c
+  f->private_data = buffers[iminor(i)];
+  pr_info("skeleton: private_data=%p\n", f->private_data);
+  ```
+
+  __NB__ : la méthode `iminor(struct inode* i)` renvoi le numéro mineur de l'instance (entre _0_ et _instances_)
+
+* lors d'opérations de lecture / écriture, il faut se référer au pointeur configuré pour l'instance lors de l'ouverture du fichier
+
+  ```c
+  char* ptr = (char*) f->private_data + *off;
+  ```
+
+* enfin, lors du déchargement du module, il faut libérer la mémoire allouée pour le tableau de buffers
+
+  ```c
+  for(i=0; i<instances; i++) kfree(buffers[i]);
+  kfree(buffers);
+  ```
+
+__NB__ : il ne faut pas oublier d'initialiser le nombre correct d'instances dans la structure `dev_t skeleton_dev` lors du chargement et du déchargement du module.
+
+### Sysfs
+
 
 ## Questions
 
