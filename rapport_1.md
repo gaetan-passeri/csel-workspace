@@ -107,12 +107,9 @@
 
   * configurer une adresse IP manuelle de la façon suivante : 
 
-    ![IP fixe cible](img\ip_fixe_cible.png)
-=======
     ![IP fixe cible](img/ip_fixe_cible.png)
->>>>>>> feafc8931ef10872d7d8bd424404e7bb9c4350f1
 
-    __NB : __ IPv4 subnet prefix length = 24 = addresse de sous réseau de 24 bits= _255.255.255.0_
+	__NB : __ IPv4 subnet prefix length = 24 = addresse de sous réseau de 24 bits= _255.255.255.0_
 
 * Depuis la machine de développement, vérifier que la connexion fonctionne : `ping 192.168.0.14`
 
@@ -530,6 +527,84 @@ Les exercices proposés lors de ce laboratoire étaient très intéressants. Avo
 # 3. Pilotes de périphériques (du 25.03 au 01.04)
 
 ## Résumé
+
+### Pilotes orientés mémoire
+
+Les pilotes orientés mémoire permettent de mapper des zones de la mémoire physique du processeur sur une zone de mémoire virtuelle nécessaire au pilotage de périphériques. Ces pilotes se développent en zone utilisateur. Pour ce faire, on emploi l'opération `mmap`, disponible en intégrant la bibliothèque `<sys/mman.h>`.
+
+Une fois la zone mémoire mappée, elle est accessible à l'emplacement `/dev/mem`.
+
+#### Mise en place du pilote
+
+* inclusion de la bibliothèque
+
+  ```c
+  #include <sys/mman.h>
+  ```
+
+* ouverture du fichier `/dev/mem`
+
+  ```c
+  int fd = open("/dev/mem", O_RDWR);
+  if (fd < 0) {
+      printf("Could not open /dev/mem: error=%i\n", fd);
+  	return -1;
+  }
+  ```
+
+* _mapping_ de la mémoire afin de rendre des registres du processeur accessibles depuis la mémoire virtuelle (les commentaires détaillent les opérations effectuées)
+
+  ```c
+  size_t psz     = getpagesize();		// récupération de la taille d'une page mémoire
+  off_t dev_addr = 0x01c14200;		// adresse du début des registres que l'on souhaite récupérer
+  off_t ofs      = dev_addr % psz;	// nombre d'octets d'écart entre l'adresse de nos registres et le début d'une nouvelle page
+  								 // (on souhaite récuperer une page entière!)
+  off_t offset   = dev_addr - ofs;	// adresse du début de la page dans laquelle se trouvent ces registres 						
+  
+  volatile uint32_t* regs = mmap (
+      0,					 	// void* addr		=> généralement NULL, adresse de départ en mémoire virtuelle
+      psz,					// size_t length	=> taille de la zone à placer en mémoire virtuelle ( => taille d'une page entière)
+      PROT_READ | PROT_WRITE,	  // int prot		  => droits d’accès à la mémoire: read, write, execute
+      MAP_SHARED,				// int flags		 => visibilité de la page pour d’autres processus: shared, private
+      fd,	 					// int fd		    => descripteur du fichier correspondant au pilote
+      offset					// off_t offset		=> début de la zone mémoire à placer en mémoire virtuelle
+  ); 
+  ```
+
+* opérations souhaitées sur le périphérique à l'aide de l'adresse virtuelle retournée par `mmap`
+
+  ```c
+  // contrôle du pointeur retourné par `mmap`
+  if (regs == MAP_FAILED) {  // (void *)-1
+      printf("mmap failed, error: %i:%s \n", errno, strerror(errno));
+      return -1;
+  }
+  
+  // copie des valeurs en RAM pour utilisation dans le programme
+  uint32_t chipid[4] = {
+      [0] = *(regs + (ofs + 0x00) / sizeof(uint32_t)),
+      [1] = *(regs + (ofs + 0x04) / sizeof(uint32_t)),
+      [2] = *(regs + (ofs + 0x08) / sizeof(uint32_t)),
+      [3] = *(regs + (ofs + 0x0c) / sizeof(uint32_t)),
+  };
+  ```
+
+* libération de l'espace mémoire avec la fonction `munmap`
+
+  ```c
+  munmap((void*)regs, psz);
+  ```
+
+* fermeture du fichier virtuel
+
+  ```c
+  close(fd);
+  ```
+
+### Pilotes orientés caractères
+
+### Sysfs
+
 
 ## Questions
 
