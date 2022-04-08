@@ -603,6 +603,103 @@ Une fois la zone mémoire mappée, elle est accessible à l'emplacement `/dev/me
 
 ### Pilotes orientés caractères
 
+Un pilote orienté caractères permet d'interagir avec des périphériques de façon assez simple. Il faut faire la distinction entre le pilote, qui est le programme permettant de piloter un ou plusieurs périphériques de même type, et le périphérique ou _device_, qui est une instance du pilote dédiée à la gestion d'un objet matériel. L'échange de données entre l'instance du pilote et le périphérique matériel se fait au travers de fichiers virtuels créés par le pilote.
+
+#### Mise en place du pilote
+
+* inclusion des bibliothèques nécessaires
+
+  ```c
+  #include <linux/cdev.h>        /* needed for char device driver */
+  #include <linux/fs.h>          /* needed for device drivers */
+  #include <linux/init.h>        /* needed for macros */
+  #include <linux/kernel.h>      /* needed for debugging */
+  #include <linux/module.h>      /* needed by all modules */
+  #include <linux/moduleparam.h> /* needed for module parameters */
+  #include <linux/uaccess.h>     /* needed to copy data to/from user */
+  ```
+
+* déclaration de l'objet `dev_t` permettant de définir le numéro de pilote
+
+  ```c
+  static dev_t skeleton_dev;
+  ```
+
+  Le numéro de pilote est constitué de :
+
+  * numéro majeur de 12 bits
+  * numéro mineur de 20 bits
+
+  Il est réservé dynamiquement lors du chargement du pilote, à l'aide de la fonction `alloc_chrdev_region`
+
+* déclaration de la structure `skeleton_cdev` permettant l'enregistrement du pilote caractère dans le noyau
+
+  ```c
+  static struct cdev skeleton_cdev;
+  ```
+
+  Lors du chargement du pilote, la structure `cdev` est :
+
+  * initialisée à l'aide de la méthode `cdev_init`
+  * enregistrée dans le noyau à l'aide de la méthode `cdev_add`
+
+* définition de la structure de fichier
+
+  ```c
+  static struct file_operations skeleton_fops = {
+      .owner   = THIS_MODULE,
+      .open    = skeleton_open,
+      .read    = skeleton_read,
+      .write   = skeleton_write,
+      .release = skeleton_release,
+  };
+  ```
+
+  Chaque attribut que l'on souhaite utiliser dans le pilote doit être initialisé à l'aide d'un pointeur vers une fonction implémentée dans le code du pilote.
+
+* Lors de l'initialisation du module (`skeleton_init`), il faut réserver dynamiquement le numéro du pilote et enregistrer le pilote dans le noyau :
+
+  ```c
+  static int __init skeleton_init(void) {
+      // Réservation dynamique du numéro de pilote
+      int status = alloc_chrdev_region(
+          &skeleton_dev,	// instance dev_t
+          0,			   // base_minor : premier numéro mineur du pilote
+          1,			   // count : le nombre de numéros mineurs requis par le pilote
+          "mymodule"	    // nom du pilote de périphérique
+      );
+      
+      if (status == 0) {
+          // enregistrement du pilote dans le noyau
+          //	=> association entre les numéros majeurs / mineurs et les opérations de fichies attachées au pilote
+          cdev_init(&skeleton_cdev, &skeleton_fops);
+          skeleton_cdev.owner = THIS_MODULE;
+          status = cdev_add(
+              &skeleton_cdev,	// pointeur sur la structure du pilote
+              skeleton_dev,	// numéro du pilote
+              1			   // count : indique le nombre de périphériques
+          );
+      }
+  
+      pr_info("Linux module skeleton loaded\n");
+      return 0;
+  }
+  ```
+
+* Lors du déchargement du pilote, il faut éliminer le pilote dans le noyau et libérer les numéros majeur et mineur du pilote.
+
+  ```c
+  static void __exit skeleton_exit(void) {
+      // élimination du pilote dans le noyau
+      cdev_del(&skeleton_cdev);
+      // libération des numéros (majeurs/mineurs) du pilote
+      unregister_chrdev_region(skeleton_dev, 1);
+      pr_info("Linux module skeleton unloaded\n");
+  }
+  ```
+
+* 
+
 ### Sysfs
 
 
