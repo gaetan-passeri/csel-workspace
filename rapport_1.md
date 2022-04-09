@@ -599,7 +599,7 @@ Une fois la zone mémoire mappée, elle est accessible à l'emplacement `/dev/me
   volatile uint32_t* regs = mmap (
       0,					 	// void* addr		=> généralement NULL, adresse de départ en mémoire virtuelle
       psz,					// size_t length	=> taille de la zone à placer en mémoire virtuelle ( => taille d'une page entière)
-      PROT_READ | PROT_WRITE,	  // int prot		  => droits d’accès à la mémoire: read, write, execute
+      PROT_READ | PROT_WRITE,   // int prot		  => droits d’accès à la mémoire: read, write, execute
       MAP_SHARED,				// int flags		 => visibilité de la page pour d’autres processus: shared, private
       fd,	 					// int fd		    => descripteur du fichier correspondant au pilote
       offset					// off_t offset		=> début de la zone mémoire à placer en mémoire virtuelle
@@ -862,6 +862,147 @@ Pour ce faire, il faut :
 __NB__ : il ne faut pas oublier d'initialiser le nombre correct d'instances dans la structure `dev_t skeleton_dev` lors du chargement et du déchargement du module.
 
 ### Sysfs
+
+le sysfs est un système de fichiers virtuels permettant de représenter les objets du noyau dont les périphériques. Il est accessible via le répertoire `/sys`.
+
+L'objectif de cette dernière partie est de construire des pilotes sous forme de classes de périphériques qui seront accessibles dans `/sys/class`.
+
+#### Structure du pilote
+
+* Pour chaque attribut que l'on souhaite présenter dans le _sysfs_, il faut :
+
+  * déclarer l'attribut en tant que __variable globale__ dans le code du pilote. Les attributs peuvent êtres de n'importe quel type, y compris des structures. Ex :
+
+    ```c
+    struct skeleton_config {
+        int id;
+        long ref;
+        char name[30];
+        char descr[30];
+    };
+    static struct skeleton_config config;
+    ```
+
+  * créer une méthode d'accès en lecture / présentation dans le _sysfs_. Cette méthode retournera le contenu à afficher lorsqu'une commande `cat` sera effectuée sur le fichier correspondant à l'attribut.
+
+    ```c
+    ssize_t sysfs_show_cfg(struct device* dev, struct device_attribute* attr, char* buf){
+        sprintf(
+            buf, "%d %ld %s %s\n",
+            config.id,
+            config.ref,
+            config.name,
+            config.descr
+        );
+        return strlen(buf);
+    }
+    ```
+
+    La méthode copie le contenu à afficher dans le buffer pointé en argument et en retourne la taille en octets.
+
+  * créer une méthode d'accès en écriture (store). Cette méthode prendra en argument un pointeur vers un buffer contenant la donnée à stocker dans l'attribut.
+
+    ```c
+    ssize_t sysfs_store_cfg(struct device* dev, struct device_attribute* attr, const char* buf, size_t count){
+        sscanf(
+            buf,            // src string
+            "%d %ld %s %s",  // string data format
+            &config.id,     // pointers to data
+            &config.ref,    // |
+            config.name,    // |
+            config.descr    // |
+        );
+        return count;
+    }
+    ```
+
+    La méthode copie le contenu du buffer pointé en argument dans l'attribut. Dans l'exemple ci-dessus, l'attribut étant une structure, la méthode `sscanf` est utilisée afin de respecter la structure des données.
+
+  * utiliser la macro `DEVICE_ATTR` pour instancier la structure `device_attribute` qui spécifie les méthodes d'accès de l'attribut.
+
+    ```c
+    DEVICE_ATTR(config, 0664, sysfs_show_cfg, sysfs_store_cfg);
+    
+    ```
+
+    la structure `device_attribute` contient les éléments suivants:
+
+    ```c
+    struct device_attribute {
+    	struct attribute attr;
+    	ssize_t (*show) (struct device *dev, struct device_attribute *attr, char *buf);
+    	ssize_t (*store) (struct device *dev, struct device_attribute *attr, const char *buf, size_t count);
+    };
+    ```
+
+    Les derniers arguments sont des pointeurs vers les méthodes implémentées plus haut.
+
+* en global, il faut déclarer les deux structures suivantes représentant respectivement la classe et le device :
+
+  * structure de classe `sysfs_class`
+
+      ```c
+      static struct class* sysfs_class;
+      ```
+
+  * structure device `sysfs_device`
+
+      ```c
+      static struct device* sysfs_device;
+      ```
+
+* lors du chargement du module (dans la méthode `skeleton_init`), il faut :
+
+  * instancier la classe préalablement déclarée à l'aide de la méthode `class_create`
+
+    ```c
+    sysfs_class  = class_create(
+        THIS_MODULE,	// struct module * owner => le propriétaire de la classe 
+        "my_sysfs_class"// const char * name	 => le nom de la classe
+    );
+    ```
+
+  * instancier le _device_ préalablement déclaré à l'aide de la méthode `device_create`
+
+    ```c
+    sysfs_device = device_create(
+        sysfs_class,        // structure classe
+        NULL,               // device parent
+        0,                  // dev_t devt (définition du numéro de pilote)
+        NULL,               // format (const char *)
+        "my_sysfs_device"   // nom du device
+    );
+    ```
+
+  * Installer les méthodes d'accès pour chaque attribut
+  
+    ```c
+    if (status == 0) status = device_create_file(
+        sysfs_device,       // device
+        &dev_attr_config    // device_attribute struct address
+    );
+    ```
+  
+* Lors du déchargement du module (dans la méthode `skeleton_exit`), il faut :
+
+  * désinstaller les méthodes d'accès pour chaque attribut
+
+    ```c
+    device_remove_file(sysfs_device, &dev_attr_config);
+    ```
+
+  * détruire le _device_
+
+    ```c
+    device_destroy(sysfs_class, 0);
+    ```
+
+  * détruire la classe
+
+    ```c
+    class_destroy(sysfs_class);
+    ```
+
 
 
 ## Questions
