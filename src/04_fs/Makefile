@@ -1,5 +1,5 @@
 EXE=app
-SRCS=$(silly_led_control.c)
+SRCS=$(wildcard *.c)
 
 ifeq ($(target),)
 target=nano
