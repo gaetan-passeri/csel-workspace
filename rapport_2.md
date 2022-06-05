@@ -31,25 +31,25 @@ header-includes:
 
 ### Introduction
 
-L'objectif de cette première partie est de créer et d'utiliser un canal de communication entre deux processus. Pour cela, on utilise l'outil __socketpair__. Cet utilitaire retourne deux descripteurs de fichiers qui permettent aux deux processus d'échanger des données par l'intermédiaire des appels systèmes __read__ et __write__. D'autre part, il est exigé que les processus tournent sur des cœurs différents du processeur. On utilise la structure __cpu_set_t__, les macros __CPU_ZERO__ et __CPU_SET__ et la fonction __sched_setaffinity()__ pour créer des sets de cœurs et les attribuer à des processus.
+L'objectif de cette première partie est de créer et d'utiliser un canal de communication entre deux processus. Pour cela, on utilise l'outil __socketpair__. Cet utilitaire retourne deux descripteurs de fichiers qui permettent aux deux processus d'échanger des données par l'intermédiaire des appels systèmes __read__ et __write__. D'autre part, il est exigé que les processus tournent sur des cœurs du processeur différents. On utilise la structure __cpu_set_t__, les macros __CPU_ZERO__ et __CPU_SET__ et la fonction __sched_setaffinity()__ pour créer des sets de cœurs et les attribuer aux processus.
 
 ### Développement
 
-Le programme comprends un processus parent et un processus enfant créé à l'aide de l'appel système __fork__. On attribue le cœur _0_ au processus parent et le cœur _1_ au processus enfant. Au démarrage, le programme crée le _fork_ et configure les _cpu sets_ pour chaque processus. Ensuite, chaque processus exécute une boucle infinie. Le processus enfant scrute l'entrée standard à l'aide de la fonction __fgets__. Lorsqu'il reçoit une chaine de caractère, il l'écrit dans le canal de communication __socketpair__ à destination du processus parent. Le parent réceptionne la chaine de caractère. S'il s'agit de la chaine "exit", il tue le processus enfant en lui faisant parvenir un signal __SIGINT__, puis se termine à son tour. Autrement, il se contente d'afficher la chaine de caractère. En réalité, pour tester le fonctionnement du programme de bout en bout, les deux processus affichent la chaine de caractère avec leurs _PID_ respectifs et la mention "parent" ou "child".
+Le programme comprends un processus parent - qui est le processus principal - et un processus enfant créé à l'aide de l'appel système __fork__. On attribue le cœur _0_ au processus parent et le cœur _1_ au processus enfant. Au démarrage, le programme crée le _fork_ et configure les _cpu sets_ pour chaque processus. Ensuite, chaque processus exécute une boucle infinie. Le processus enfant scrute l'entrée standard à l'aide de la fonction __fgets__. Lorsqu'il reçoit une chaine de caractère, il l'écrit dans le canal de communication __socketpair__ à destination du processus parent. Le parent réceptionne la chaine de caractère. S'il s'agit de la chaine "exit", il tue le processus enfant en lui faisant parvenir un signal __SIGKILL__, puis se termine à son tour. Autrement, il se contente d'afficher la chaine de caractère. En réalité, pour tester le fonctionnement du programme de bout en bout, les deux processus affichent la chaine de caractère avec leurs _PID_ respectifs et la mention "parent" ou "child".
 
-Enfin, le signal SIGINT, généré par _Ctrl-c_ est capturé afin de montrer que l'on pourrait supprimer cette possibilité pour contraindre l'utilisateur à passer par la saisie de la chaine de caractère "exit". Dans le code fourni, la fonction _sigaction()_ appelle une fonction qui quitte l'application en écrivant préalablement un message sur la sortie standard.
+Le signal SIGINT, généré par un éventuel _Ctrl-c_ est capturé afin de montrer que l'on pourrait supprimer cette possibilité pour contraindre l'utilisateur à passer par la saisie de la chaine de caractère "exit". Dans le code fourni, la fonction _sigaction()_ appelle une fonction qui quitte l'application en écrivant préalablement un message sur la sortie standard.
 
 Voici le détail des étapes réalisées :
 
 #### Capture du signal SIGINT
 
-Dans le main, la structure suivante permet de définir un pointeur vers la fonction qui sera appelée lorsque le signal sera capturé.
+Dans le main, la structure suivante permet de définir un pointeur vers la fonction appelée lorsque le signal est capturé.
 
 ```c
 struct sigaction act = {.sa_handler = exit_app,};
 ```
 
-La fonction sigaction ci-dessous fait le lien entre le signal a capturer et la structure sigaction ci-dessus.
+La fonction sigaction ci-dessous fait le lien entre le signal à capturer et la structure sigaction ci-dessus.
 
 ```c
 int err = sigaction (SIGINT, &act, NULL);
@@ -68,7 +68,7 @@ void exit_app(){
 
 #### Création et utilisation du canal socketpair
 
-En global, un tableau de deux descripteurs de fichiers est déclaré :
+On déclare un tableau de deux descripteurs de fichiers en variable globale :
 
 ```c
 int fd[2];
@@ -101,13 +101,13 @@ if (nr == -1)
 
 #### Fork et configuration des _cpu sets_
 
-Dans le main, toujours, on crée un fork du thread principal :
+Dans le main, on crée un fork du thread principal :
 
 ```c
 pid_t pid = fork();
 ```
 
-La fonction _fork_ retourne deux fois, une fois avec le processus parent et une fois avec le processus enfant fraîchement créé. Pour chacun des deux processus :
+La fonction _fork_ retourne deux fois. Une fois avec le _PID_ du processus parent et une fois avec celui du processus enfant fraîchement créé. Pour chacun des deux processus :
 
 * on déclare un set de cœurs;
 * on réinitialise le set à l'aide de la macro __CPU_ZERO__;
@@ -143,7 +143,7 @@ La fonction _fork_ retourne deux fois, une fois avec le processus parent et une 
 
 #### Fermeture de l'application
 
-Dans la routine du processus enfant, on écrit le _PID_ dans une variable globale, il servira au parent à lui envoyer un signal _kill_ en temps voulu.
+Au début de l'execution de la routine enfant, avant d'entrer dans la boucle infinie, le processus écrit son _PID_ dans une variable globale. Il servira au parent lorsque ce dernier aura besoin de lui envoyer un signal __SIGKILL__.
 
 Lorsque le message reçu par le processus parent correspond au mot "exit", il envoi un signal __SIGKILL__ au processus enfant à l'aide de l'appel système __kill__. Puis, il se termine lui-même.
 
@@ -163,7 +163,7 @@ if(strcmp(buf, "exit") == 0){
 
 ### Résultat
 
-On peut voir que les deux processus communiquent le message saisi.
+En execurant le programme, lors de la saisie d'une chaine de caractère, on constate que le processus enfant communique bien le message au processus parent.
 
 ````bash
 hello
@@ -171,7 +171,7 @@ received msg in child (pid 259) : hello
 received msg in parent (pid 258) : hello
 ````
 
-Lorsqu'on passe le processus en tâche de fond à l'aide des touches _Ctrl-z_ suivies de la commande _bg_, on peut utiliser la commande _ps_ pour afficher la liste des processus. On vérifie ainsi que les deux _pid_ affichés par le programme correspondent bien.
+Lorsqu'on passe le processus en tâche de fond en actionnant les touches _Ctrl-z_ suivies de la commande _bg_, on peut utiliser la commande _ps_ pour afficher la liste des processus. On vérifie ainsi que les deux _pid_ affichés par le programme correspondent bien.
 
 ```bash
 # ps
@@ -187,7 +187,7 @@ Lorsqu'on passe le processus en tâche de fond à l'aide des touches _Ctrl-z_ su
 
 ### Introduction
 
-Les groupes de contrôles _CGroups_ Linux permettent de limiter les ressources mémoire et CPU attribuées à des processus. Il est également possible de contrôler l'utilisation d'autres périphériques, comme par exemple les entrées / sorties. Le but final est de créer des sous-systèmes disposants de certaines quantités de ressources maximale. Ceci permet de séparer les ressources du processeur par activités.
+Les groupes de contrôles _CGroups_ Linux permettent de limiter les ressources mémoire et CPU attribuées à des processus. Il est également possible de contrôler l'utilisation d'autres périphériques, comme par exemple les entrées / sorties (GPIO). Le but final est de créer des sous-systèmes disposant de certaines quantités de ressources maximale. Ceci permet de séparer les ressources du processeur par activités.
 
 ### Contrôle des ressources mémoire
 
@@ -203,13 +203,13 @@ Les groupes de contrôles _CGroups_ Linux permettent de limiter les ressources m
     $ mkdir /sys/fs/cgroup/memory
     ```
 
-* On monte le groupe en question en spécifiant les sous-systèmes que l'on souhaite y afficher à l'aide de l'option __-o__. Dans le cas ci-dessous, seuls les sous-systèmes permettant le contrôle de la mémoire seront visibles.
+* On monte le groupe en question en spécifiant les sous-systèmes que l'on souhaite y afficher à l'aide de l'option __-o__. Dans le cas ci-dessous, seuls les sous-systèmes permettant de contrôler la mémoire seront visibles.
 
     ```bash
     $ mount -t cgroup -o memory memory /sys/fs/cgroup/memory
     ```
 
-* à la racine du réperoite `/sys/fs/cgroup/memory` se trouve tous les sous-systèmes pour la configuration générale de la mémoire. Etant donné que l'on souhaite créer un groupe séparé dans lequel limiter la mémoire pouvant être utilisée et y attribuer des processus, on crée un répertoire "mem" dans `sys/fs/cgroup/memory`. Ce répertoire contiendra tous les mêmes éléments que son répertoire parent et on pourra le configurer différemment.
+* à la racine du réperoite `/sys/fs/cgroup/memory` se trouve tous les sous-systèmes pour la configuration générale de la mémoire. Etant donné que l'on souhaite créer un groupe séparé dans lequel limiter la mémoire de certains processus, on crée un répertoire "mem" dans `sys/fs/cgroup/memory`. Ce répertoire contiendra tous les mêmes éléments que son répertoire parent et pourra être configuré différement.
 
     ```bash
     $ mkdir /sys/fs/cgroup/memory/mem
@@ -221,14 +221,14 @@ Les groupes de contrôles _CGroups_ Linux permettent de limiter les ressources m
     $ echo 20M > /sys/fs/cgroup/memory/mem/memory.limit_in_bytes
     ```
 
-    Voici la valeur affichée lors de la re-lecture de cette propriété :
+    Voici la valeur affichée lors de la re-lecture de cet attribut:
 
     ```bash
     # cat /sys/fs/cgroup/memory/mem/memory.limit_in_bytes
     20971520
     ```
 
-* On peut maintenant ajouter les processus auxquels on veux imposer cette limitation au groupe de contrôle. Dans l'exemple ci-dessous, "$$" correspondant au processus courant, on ajoute le processus au _CGroup_.
+* On peut maintenant ajouter les processus auxquels on souhaite imposer cette limitation au groupe de contrôle. Dans l'exemple ci-dessous, "$$" correspondant au processus courant, on ajoute le processus au _CGroup_.
 
     ```bash
     $ echo $$ > /sys/fs/cgroup/memory/mem/tasks
@@ -281,14 +281,14 @@ int main(int argc, char* argv[])
 }
 ```
 
-Lorsque la définition __SIZE_IN_BYTES__ est à 20M, limite de la mémoire utilisée dans notre cas, le programme se comporte comme prévu. En revanche, si la quantité d'octets à allouer est passée à 30M, le processus est "tué" immédiatement, comme le montre l'extrait du terminal suivant :
+Dans le programme ci-dessus, lorsque la définition __SIZE_IN_BYTES__ est à 20M, limite de la mémoire utilisée dans notre cas, le programme se comporte comme prévu. En revanche, si on passe la quantité d'octets à allouer à 30M, le processus est "tué" immédiatement, comme le montre l'extrait du terminal suivant :
 
 ```bash
 # ./app
 Killed
 ```
 
-On peut vérifier la mémoire disponible restante à tout moment en lisant la propriété __memory.usage_in_bytes__ de la façon suivante :
+On peut vérifier la mémoire encore disponible à tout moment en lisant la propriété __memory.usage_in_bytes__ de la façon suivante :
 
 ```bash
 cat /sys/fs/cgroup/memory/mem/memory.usage_in_bytes
@@ -298,7 +298,7 @@ cat /sys/fs/cgroup/memory/mem/memory.usage_in_bytes
 
 On souhaite à présent limiter l'utilisation des cœurs du processeur à un certain nombre pour les processus concernés. Pour ce faire, on commence par ajouter un groupe de contrôle __cpuset__ dans le _CGroup_ de l'exercice précédent. On crée les deux sous-groupes _high_ et _low_ pour le contrôle des CPU.
 
-Les quatre dernières lignes de l'extrait de code ci-dessous configurent les cœurs pouvant être utilisés par les sous-groupes _low_ et _high_. Par exemple, dans notre cas, tous les processus placés dans le sous-groupe _low_ seront exécutés dans le cœur 2 du processeur alors que tous les processus placés dans le sous-groupe _high_ seront exécutés dans le cœur 3.
+Les quatre dernières lignes de l'extrait de code ci-dessous configurent les cœurs qui peuvent être utilisés par les sous-groupes _low_ et _high_. Par exemple, dans notre cas, tous les processus placés dans le sous-groupe _low_ seront exécutés dans le cœur 2 du processeur alors que tous les processus placés dans le sous-groupe _high_ seront exécutés dans le cœur 3.
 
 ```bash
 $ mkdir /sys/fs/cgroup/cpuset
@@ -311,7 +311,7 @@ $ echo 2 > /sys/fs/cgroup/cpuset/low/cpuset.cpus
 $ echo 0 > /sys/fs/cgroup/cpuset/low/cpuset.mems
 ```
 
-Le code de test se contente de faire un _fork_ et d'exécuter dans chaque processus une incrémentation d'une variable dans une boucle infinie. en lançant le programme sur la cible en tâche de fond et en utilisant la commande _htop_, on observe que deux des CPUs sont bien utilisés à 100%. La liste des processus permet de confirmer que les coupables sont bien nos deux processus !
+Le code de test se contente de faire un _fork_ et d'exécuter dans chaque processus une incrémentation d'une variable dans une boucle infinie. En lançant le programme sur la cible en tâche de fond et en utilisant la commande _htop_, on observe que deux des CPUs sont bien utilisés à 100%. La liste des processus permet de confirmer que les coupables sont les deux processus de notre application (nom de l'executable : "app")!
 
 ```bash
 top - 03:49:30 up  2:14,  1 user,  load average: 2.07, 1.81, 1.04
