@@ -26,7 +26,154 @@ header-includes:
 
 # 1. Systèmes de fichiers
 
+## Introduction
+
+Ce travail pratique avait pour but de nous familiariser avec l\'interaction des périphériques à l'aide du système de fichier.
+
+## Le travail à réaliser 
+
+Il était demandé de modifier le programme silly_led_control.c. Ce dernier est capable d\'initialiser la Led (GPIO 10) en sortie et de la faire clignoter à une fréquence de 2Hz.
+
+Le programme doit être modifié pour permettre aux boutons poussoirs de changer la fréquence de clignotement de la Led.
+
+-   `k1` pour augmenter la fréquence
+
+-   `k2` pour remettre la fréquence à sa valeur initiale
+
+-   `k3` pour diminuer la fréquence
+
+Pour cela, il a été demandé d\'implémenter un multiplexeur d\'entrée/sortie.
+
+Tout d\'abord, il faut initialiser les boutons poussoirs pour pouvoir interagir avec ces derniers. Pour cela, une fonction nommée open_switchs() a été implémentée :
+
+```c
+static int open_switchs(){
+    int f = open(GPIO_UNEXPORT, O_WRONLY);
+    write(f, SW_K1, strlen(SW_K1));
+    close(f);
+
+    f = open(GPIO_EXPORT,O_WRONLY);
+    write(f, SW_K1, strlen(SW_K1));
+    close(f);
+
+    // config pin
+    f = open(SW_K1 "/direction", O_WRONLY);
+    write(f, "in", 2);
+    close(f);
+
+    f = open(GPIO_UNEXPORT, O_WRONLY);
+    write(f, SW_K2, strlen(SW_K2));
+    close(f);
+
+    f = open(GPIO_EXPORT,O_WRONLY);
+    write(f, SW_K2, strlen(SW_K2));
+    close(f);
+
+    // config pin
+    f = open(SW_K2 "/direction", O_WRONLY);
+    write(f, "in", 2);
+    close(f);
+
+    f = open(GPIO_UNEXPORT, O_WRONLY);
+    write(f, SW_K3, strlen(SW_K3));
+    close(f);
+
+    f = open(GPIO_EXPORT,O_WRONLY);
+    write(f, SW_K3, strlen(SW_K3));
+    close(f);
+
+    // config pin
+    f = open(SW_K3 "/direction", O_WRONLY);
+    write(f, "in", 2);
+    close(f);
+    return f;
+
+}
+```
+
+Cette fonction configure les trois boutons en mode entrée.
+
+```c
+f = open(GPIO_UNEXPORT, O_WRONLY);
+write(f, SW_Kx, strlen(SW_Kx));    
+close(f);
+```
+
+Le code ci-dessus permet de réinitialiser le port x. Cela permet de remettre à 0 les précédentes initialisations effectuées sur ce même port.
+
+Ensuite, il faut exporter le port. L\'export permet d\'indiquer au système que le port souhaité va être utilisé. Cela se fait de la manière suivante :
+
+```c
+f = open(GPIO_EXPORT,O_WRONLY);
+write(f, SW_Kx, strlen(SW_Kx));
+close(f);
+```
+
+Une fois le port exporté, on indique la direction du port in ou out. Voici ce qu'il faut faire :
+
+```c
+f = open(SW_Kx "/direction", O_WRONLY);
+write(f, "in", 2);
+close(f);
+return f;
+```
+
+Maintenant que nos ports sont configurés correctement, il faut configurer le multiplexeur d\'entrée/sortie. Cela se fait de la manière suivante :
+
+```c
+int epfd = epoll_create1(0);
+
+if (epfd == -1){
+	printf("ERROR : epoll create %d\n",epfd);
+  exit(1);
+}
+```
+
+La fonction epoll_create permet de créer un nouveau contexte epoll.
+
+Ensuite, la création d\'un évènement doit être faite pour spécifier au contexte sur quel évènement le multiplexage doit être fait. Le code suivant montre comment faire :
+
+```c
+struct epoll_event event = {
+	.events = EPOLLIN | EPOLLET,// EPOLLET,
+	.data.fd = f_k1,
+};
+```
+
+Maintenant, il faut ajouter le descripteur de fichier au contexte epoll. Le code suivant s\'en charge :
+
+```c
+int ret = epoll_ctl(epfd, EPOLL_CTL_ADD, f_k1, &event);
+if (ret == -1){
+  printf("ERROR : epoll ctl %d\n", ret);
+	exit(1);
+}    
+```
+
+Une fois le descripteur (évènement) ajouté au contexte epoll, l\'attente d\'évènement peut être faite. Pour cela la fonction epoll_wait() est utilisée de la manière suivante :
+
+```c
+int nr = epoll_wait(epfd, &event, 2, -1);
+if (nr == -1)
+printf("ERROR : epoll wait\n");
+
+for (int i=0; i<nr; i++) {
+	printf ("event=%ld on fd=%d\n", event.events, event.data.fd);
+}
+```
+
+Event.events nous indique quel type d\'évènement a arrêté l\'attente et event.data indique quant à lui le descripteur de fichier lié à l\'évènement.
+
+Malheureusement, la fin du travail demandé n'a pas pu être réalisée. Cela est due à une mauvaise configuration des ports en entrée. En effet, il aurait fallu rajouter un mode événementiel aux boutons. Cela se fait de la manière suivante :
+
+```bash
+echo rising > /sys/class/gpio/gpio<pin_nr>/edge
+echo falling > /sys/class/gpio/gpio<pin_nr>/edge
+echo both > /sys/class/gpio/gpio<pin_nr>/edge
+```
+
 # 2. Ordonnanceur
+
 ## Processus, signaux et communication
 
 ### Introduction
@@ -350,3 +497,185 @@ L'attribut __cpu.shares__ permet de répartir le temps CPU entre différents gro
 
 # 3. Performances
 
+## Introduction 
+
+Le but des trois exercices de ce travail pratique est de faire une prise en main de l\'outil perf. En effet, c\'est un outil très complet mais également très complexe pour voir toutes ses sous-commandes exécuter la commande suivante :
+
+    perf 
+
+## Installation de perf
+
+Lors de la mise en place de notre environnement Linux (TP 01), la version générée de perf ne correspond pas totalement à nos besoin.
+
+Pour cela, il faut reconfigurer le Buildroot. Pour ce faire, exécutez les commandes suivantes :
+
+    cd /buildroot
+    make menuconfig
+
+Une fois le menu de configuration de Buildroot chargé, allez dans **Target packages -\> Development tools** Selectionner binutils et **binutils binaries**, puis compilez le nouveau buildroot avec :
+
+    cd /buildroot
+    make
+
+Maintenant, il faut mettre à jour le rootfs. Pour cela, exécutez le script ci-dessous :
+
+    #!/usr/bin/env bash
+    mkdir /rootfs_new/
+    tar xf /buildroot/output/images/rootfs.tar -C /rootfs_new/
+    rsync -acO --progress --exclude=/etc/fstab /rootfs_new/ /rootfs
+    rm -Rf /rootfs_new/
+
+Puis, générez la nouvelle version de perf avec les commandes suivantes :
+
+    cd /buildroot/output/build/linux-5.15.21/tools/perf/
+    make clean
+    make ARCH=arm64 CROSS_COMPILE=/buildroot/output/host/bin/aarch64-linux-
+
+Une fois la nouvelle version de perf générée, il faut remplacer l\'ancienne version. Pour cela, exécutez la commande suivante :
+
+    cp perf /rootfs/usr/bin/perf
+
+### Validation de l\'installation 
+
+Pour s\'assurer que perf a correctement mis à jour, exécutez la commande suivante :
+
+    perf
+    branch-instructions OR branches                    [Hardware event]
+    branch-misses                                      [Hardware event]
+    bus-cycles                                         [Hardware event]
+    cache-misses                                       [Hardware event]
+    cache-references                                   [Hardware event]
+    cpu-cycles OR cycles                               [Hardware event]
+    instructions                                       [Hardware event]
+
+Si une liste similaire à celle montrée ci-dessus est obtenue, alors cela signifie que la mise à jour a fonctionné.
+
+## Compilation d\'un exemple et utilisation de perf
+
+La commande suivante :
+
+    perf stat ./executable 
+
+permet d\'afficher plusieurs informations, comme le temps nécessaire à l\'exécution du programme ainsi que différentes valeurs de compteur.
+
+Pour cette exercice, il faut compiler puis exécuter le programme ex01 de la manière suivante :
+
+    perf stat ./ex01
+
+Le résultat obtenu après cette exécution est le suivant :
+
+    234      context-switches          #    5.852 /sec  
+    1673821036      instructions              #    0.05  insn per cycle 
+    40.039115853 seconds time elapsed
+    
+    39.264146000 seconds user
+    0.288091000 seconds sys
+
+Nous pouvons voir que le temps nécessaire à l\'exécution du programme est d\'environ 39,55 secondes.
+
+### Correction
+
+Les cache-misses sont dus à la boucle for K. C\'est pourquoi cette boucle a été enlevée et remplacée. Le code corrigé est le suivant :
+
+    for (i = 0; i < SIZE; i++)
+    {
+    		for (j = 0; j < SIZE; j++)
+        {
+        		array[j][i] +=10;
+    	 	}
+    }
+
+En effet, à chaque nouvelle itération de la boucle K, le programme devait charger l\'ensemble du tableau.
+
+### Validation
+
+La validation se fait à l\'aide de la commande suivante :
+
+    perf stat -e L1-dcache-load-misses ./ex1
+
+les résultats obtenus sont les suivants :
+
+Performance avant correction :
+
+    406615150      L1-dcache-load-misses       
+    
+    36.730038309 seconds time elapsed
+    
+    35.992869000 seconds user
+    0.315641000 seconds sys
+
+Performance après correction :
+
+        42128955      L1-dcache-load-misses                                       
+    
+        4.497843877 seconds time elapsed
+    
+        4.062188000 seconds user
+        0.362602000 seconds sys
+
+On peut voir que le nombre de cache-misses et le temps d\'exécution ont été divisés par 10.
+
+### Définition 
+
+Instruction: Le nombre d\'instruction processeur que le programme a effectué
+
+Cache-misses: Le nombre de donnée qui n\'était pas stocké dans le cache\
+\
+branch-misses: Le saut prédit par le programme (ex: une condition moins exécutée)\
+\
+L1-dcache-load-misses:\
+\
+cpu-migrations:
+
+context-switches: Changement de contexte
+
+### Mesure de l'impact sur la performance
+
+Le résultats du temps d\'exécution avec time est de 35.6 secondes.
+
+Le temps d\'exécution donné par perf stat + time est de 35.9 secondes.
+
+On peut voir que les fonctions time n\'affectent que très peu le temps d\'exécution.
+
+## Analyse et optimisation d'un programme
+
+### Explication code ex02
+
+Première étape : un tableau de short contenant 256 indice est déclaré. Ensuite, le tableau est initialisé avec des valeurs aléatoires comprises entre 0 et 251.
+
+Deuxième étape : calcul une somme. Pour cela, deux boucles sont implémentées. La première de 1000 itérations et la deuxième de 256. La somme n\'est calculé qu\'avec des nombres plus grands que 256.
+
+Finalement, cette somme est affichée à l\'utilisateur.
+
+### Mesure du temps d\'exécution 
+
+Le temps d\'exécution mesuré avec perf stat est de 26.2 secondes.
+
+### Optimisation 
+
+Le temps d\'exécution obtenu en ayant apporté les optimisation est de 23.4 secondes. (réalisé avec perf stat)
+
+### Mesure 
+
+Le programme s\'exécute plus rapidement, car le tableau est trié. En effet, la condition à l\'intérieur des boucles for ralenti l\'exécution du programme. Cela est dû au fait que le programme ne peut pas prédire la prochaine étape.
+
+Lorsque le tableau est trié, le programme peut prédire la suite, car toutes les valeurs inférieures à 256 sont traitées en premières.
+
+## Parsing de logs apache
+
+#### Recherche de lenteur
+
+L\'analyse du fichier per.data a montré que la fonction utilisant le plus la fonction std::operator== est ApacheAccessLogAnalyzer::processFile.
+
+    26.75%  read-apache-log  read-apache-logs       [.] std::operator==<char>                                                 
+    std::operator==<char>                                                                                           
+    
+    __gnu_cxx::__ops::_Iter_equals_val<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const>▒
+    std::__find_if<__gnu_cxx::__normal_iterator<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>▒
+    std::__find_if<__gnu_cxx::__normal_iterator<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>▒
+    std::find<__gnu_cxx::__normal_iterator<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >*, 
+    HostCounter::isNewHost                                                                                                   
+    HostCounter::notifyHost                                                                                                  
+    ApacheAccessLogAnalyzer::processFile   
+
+Malheureusement, la suite n'a pas pu ête réaliser par manque de temps. 
