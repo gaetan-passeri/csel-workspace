@@ -41,125 +41,149 @@ Enfin, le signal SIGINT, généré par _Ctrl-c_ est capturé afin de montrer que
 
 Voici le détail des étapes réalisées :
 
-* __Capture du signal SIGINT__
+#### Capture du signal SIGINT
 
-  Dans le main, la structure suivante permet de définir un pointeur vers la fonction qui sera appelée lorsque le signal sera capturé.
+Dans le main, la structure suivante permet de définir un pointeur vers la fonction qui sera appelée lorsque le signal sera capturé.
 
-  ```c
-  struct sigaction act = {.sa_handler = exit_app,};
-  ```
+```c
+struct sigaction act = {.sa_handler = exit_app,};
+```
 
-  La fonction sigaction ci-dessous fait le lien entre le signal a capturer et la structure sigaction ci-dessus.
+La fonction sigaction ci-dessous fait le lien entre le signal a capturer et la structure sigaction ci-dessus.
 
-  ```c
-  int err = sigaction (SIGINT, &act, NULL);
-  	if(err == -1)
-  		perror("capture SIGINT signal");
-  ```
+```c
+int err = sigaction (SIGINT, &act, NULL);
+	if(err == -1)
+		perror("capture SIGINT signal");
+```
 
-  Enfin, la fonction appelée quitte l'application après avoir écrit sur la sortie standard
+Enfin, la fonction appelée quitte l'application après avoir écrit sur la sortie standard
 
-  ```c
-  void exit_app(){
-      printf("\nexit app\n");
-      exit(EXIT_SUCCESS);
-  }
-  ```
+```c
+void exit_app(){
+    printf("\nexit app\n");
+    exit(EXIT_SUCCESS);
+}
+```
 
-* __Création et utilisation du canal socketpair__
+#### Création et utilisation du canal socketpair
 
-  En global, un tableau de deux descripteurs de fichiers est déclaré :
+En global, un tableau de deux descripteurs de fichiers est déclaré :
 
-  ```c
-  int fd[2];
-  ```
+```c
+int fd[2];
+```
 
-  Dans le main, on utilise la fonction __socketpair__ qui rempli ce tableau avec chacun des descripteurs :
+Dans le main, on utilise la fonction __socketpair__ qui rempli ce tableau avec chacun des descripteurs :
 
-  ```c
-  err = socketpair(AF_UNIX, SOCK_STREAM, 0, fd);
-  if (err == -1)
-      perror("socketpair creation");
-  ```
+```c
+err = socketpair(AF_UNIX, SOCK_STREAM, 0, fd);
+if (err == -1)
+    perror("socketpair creation");
+```
 
-  J'ai décidé arbitrairement que le premier descripteur de fichier _fd[0]_ correspondait au parent et le second _fd[1]_ à l'enfant. Dans la routine du processus enfant, on écrit un message à destination du parent :
+J'ai décidé arbitrairement que le premier descripteur de fichier _fd[0]_ correspondait au parent et le second _fd[1]_ à l'enfant. Dans la routine du processus enfant, on écrit un message à destination du parent :
 
-  ```c
-  ssize_t count = write (fd[0], buf, strlen(buf));
-  if (count == -1)
-      perror("\nerror");
-  ```
+```c
+ssize_t count = write (fd[0], buf, strlen(buf));
+if (count == -1)
+    perror("\nerror");
+```
 
-  Dans la routine du processus parent, on lis en boucle le fichier dans lequel sont écris les messages en provenance de l'enfant :
+Dans la routine du processus parent, on lis en boucle le fichier dans lequel sont écris les messages en provenance de l'enfant :
 
-  ```c
-  len = sizeof(buf);
-  nr = read (fd[1], buf, len);
-  if (nr == -1)
-      perror("parent reading");
-  ```
+```c
+len = sizeof(buf);
+nr = read (fd[1], buf, len);
+if (nr == -1)
+    perror("parent reading");
+```
 
-* __Fork et configuration des _cpu sets___
+#### Fork et configuration des _cpu sets_
 
-  Dans le main, toujours, on crée un fork du thread principal :
+Dans le main, toujours, on crée un fork du thread principal :
 
-  ```c
-  pid_t pid = fork();
-  ```
+```c
+pid_t pid = fork();
+```
 
-  La fonction _fork_ retourne deux fois, une fois avec le processus parent et une fois avec le processus enfant fraîchement créé. Pour chacun des deux processus :
+La fonction _fork_ retourne deux fois, une fois avec le processus parent et une fois avec le processus enfant fraîchement créé. Pour chacun des deux processus :
 
-  * on déclare un set de cœurs;
-  * on réinitialise le set à l'aide de la macro __CPU_ZERO__;
-  * on ajoute le cœur souhaité à l'aide de la macro __CPU_SET__;
-  * on attribue le set au processus correspondant;
-  * on lance la routine correspondant à l'enfant / au parent.
+* on déclare un set de cœurs;
+* on réinitialise le set à l'aide de la macro __CPU_ZERO__;
+* on ajoute le cœur souhaité à l'aide de la macro __CPU_SET__;
+* on attribue le set au processus correspondant;
+* on lance la routine correspondant à l'enfant / au parent.
 
-  ```c
-      if (pid == 0) {
-          // ---- attribution des coeurs aux processus ----------------------------------------------
-          cpu_set_t set_child;
-          CPU_ZERO(&set_child);       // rst du set de cpu enfant (désattribue tous les éventuels cpu de ce set)
-          CPU_SET(1, &set_child);     // ajout du coeur 1 au set de cpu enfant
-          int ret = sched_setaffinity(pid, sizeof(set_child), &set_child);    // attr. du set de cpu enfant au thread enfant
-          if(ret == -1)
-              perror("child cpu set creation");
-          // ----------------------------------------------------------------------------------------
-          child_routine();
-      } else if (pid > 0){
-          // ---- attribution des coeurs aux processus ----------------------------------------------
-          cpu_set_t set_parent;
-          CPU_ZERO(&set_parent);       // rst du set de cpu parent (désattribue tous les éventuels cpu de ce set)
-          CPU_SET(0, &set_parent);     // ajout du coeur 0 au set de cpu parent
-          int ret = sched_setaffinity(pid, sizeof(set_parent), &set_parent);    // attr. du set de cpu parent au thread courant
-          if(ret == -1)
-              perror("parent cpu set creation");
-          // ----------------------------------------------------------------------------------------
-          parent_routine();
-      } else {
-          perror("fork pid return");
-      }
-  ```
+```c
+    if (pid == 0) {
+        // ---- attribution des coeurs aux processus ----------------------------------------------
+        cpu_set_t set_child;
+        CPU_ZERO(&set_child);       // rst du set de cpu enfant (désattribue tous les éventuels cpu de ce set)
+        CPU_SET(1, &set_child);     // ajout du coeur 1 au set de cpu enfant
+        int ret = sched_setaffinity(pid, sizeof(set_child), &set_child);    // attr. du set de cpu enfant au thread enfant
+        if(ret == -1)
+            perror("child cpu set creation");
+        // ----------------------------------------------------------------------------------------
+        child_routine();
+    } else if (pid > 0){
+        // ---- attribution des coeurs aux processus ----------------------------------------------
+        cpu_set_t set_parent;
+        CPU_ZERO(&set_parent);       // rst du set de cpu parent (désattribue tous les éventuels cpu de ce set)
+        CPU_SET(0, &set_parent);     // ajout du coeur 0 au set de cpu parent
+        int ret = sched_setaffinity(pid, sizeof(set_parent), &set_parent);    // attr. du set de cpu parent au thread courant
+        if(ret == -1)
+            perror("parent cpu set creation");
+        // ----------------------------------------------------------------------------------------
+        parent_routine();
+    } else {
+        perror("fork pid return");
+    }
+```
 
-* __Fermeture de l'application__
+#### Fermeture de l'application
 
-  Dans la routine du processus enfant, on écrit le _PID_ dans une variable globale, il servira au parent à lui envoyer un signal _kill_ en temps voulu.
+Dans la routine du processus enfant, on écrit le _PID_ dans une variable globale, il servira au parent à lui envoyer un signal _kill_ en temps voulu.
 
-  Lorsque le message reçu par le processus parent correspond au mot "exit", il envoi un signal __SIGKILL__ au processus enfant à l'aide de l'appel système __kill__. Puis, il se termine lui-même.
+Lorsque le message reçu par le processus parent correspond au mot "exit", il envoi un signal __SIGKILL__ au processus enfant à l'aide de l'appel système __kill__. Puis, il se termine lui-même.
 
-  ```c
-  if(strcmp(buf, "exit") == 0){            
-      // kill child process
-      int ret = kill(child_pid, SIGKILL);
-      if (ret == -1) {
-          perror("kill");
-          exit(EXIT_FAILURE);
-      }
-  
-      // exit main process
-      exit(EXIT_SUCCESS);
-  }
-  ```
+```c
+if(strcmp(buf, "exit") == 0){            
+    // kill child process
+    int ret = kill(child_pid, SIGKILL);
+    if (ret == -1) {
+        perror("kill");
+        exit(EXIT_FAILURE);
+    }
+
+    // exit main process
+    exit(EXIT_SUCCESS);
+}
+```
+
+### Résultat
+
+On peut voir que les deux processus communiquent le message saisi.
+
+````bash
+hello
+received msg in child (pid 259) : hello
+received msg in parent (pid 258) : hello
+````
+
+Lorsqu'on passe le processus en tâche de fond à l'aide des touches _Ctrl-z_ suivies de la commande _bg_, on peut utiliser la commande _ps_ pour afficher la liste des processus. On vérifie ainsi que les deux _pid_ affichés par le programme correspondent bien.
+
+```bash
+# ps
+  PID TTY          TIME CMD
+  252 pts/0    00:00:00 sh
+  258 pts/0    00:00:00 app
+  259 pts/0    00:00:00 app
+  271 pts/0    00:00:00 ps
+#
+```
+
+
 
 ## CGroups
 
