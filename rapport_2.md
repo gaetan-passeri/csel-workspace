@@ -183,16 +183,114 @@ Lorsqu'on passe le processus en tâche de fond à l'aide des touches _Ctrl-z_ su
 #
 ```
 
-
-
 ## CGroups
 
 ### Introduction
 
-### Développement
+Les groupes de contrôles _CGroups_ Linux permettent de limiter les ressources mémoire et CPU attribuées à des processus. Il est également possible de contrôler l'utilisation d'autres périphériques, comme par exemple les entrées / sorties. Le but final est de créer des sous-systèmes disposants de certaines quantités de ressources maximale. Ceci permet de séparer les ressources du processeur par activités.
+
+### Contrôle des ressources mémoire
+
+* Dans un terminal du système embarqué, on commence par monter _cgroup_ dans le rootfs :
+
+    ```bash
+    $ mount -t tmpfs none /sys/fs/cgroup
+    ```
+
+* On crée ensuite un groupe de contrôle en y ajoutant un répertoire portant son nom. Dans notre cas, on souhaite contrôler l'utilisation de la mémoire uniquement. On appelle donc ce groupe "memory".
+
+    ```bash
+    $ mkdir /sys/fs/cgroup/memory
+    ```
+
+* On monte le groupe en question en spécifiant les sous-systèmes que l'on souhaite y afficher à l'aide de l'option __-o__. Dans le cas ci-dessous, seuls les sous-systèmes permettant le contrôle de la mémoire seront visibles.
+
+    ```bash
+    $ mount -t cgroup -o memory memory /sys/fs/cgroup/memory
+    ```
+
+* à la racine du réperoite `/sys/fs/cgroup/memory` se trouve tous les sous-systèmes pour la configuration générale de la mémoire. Etant donné que l'on souhaite créer un groupe séparé dans lequel limiter la mémoire pouvant être utilisée et y attribuer des processus, on crée un répertoire "mem" dans `sys/fs/cgroup/memory`. Ce répertoire contiendra tous les mêmes éléments que son répertoire parent et on pourra le configurer différemment.
+
+    ```bash
+    $ mkdir /sys/fs/cgroup/memory/mem
+    ```
+
+* Enfin, il suffit de configurer ce groupe de contrôle pour limiter la mémoire d'un ou plusieurs processus. On limite le nombre d'octets disponibles en l'écrivant dans la propriété _memory.limit_in_bytes_.
+
+    ```bash
+    $ echo 20M > /sys/fs/cgroup/memory/mem/memory.limit_in_bytes
+    ```
+
+    Voici la valeur affichée lors de la re-lecture de cette propriété :
+
+    ```bash
+    # cat /sys/fs/cgroup/memory/mem/memory.limit_in_bytes
+    20971520
+    ```
+
+* On peut maintenant ajouter les processus auxquels on veux imposer cette limitation au groupe de contrôle. Dans l'exemple ci-dessous, "$$" correspondant au processus courant, on ajoute le processus au _CGroup_.
+
+    ```bash
+    $ echo $$ > /sys/fs/cgroup/memory/mem/tasks
+    ```
+
+    Voici la liste des processus qui respectent cette limitation :
+
+    ```bash
+    # cat /sys/fs/cgroup/memory/mem/tasks
+    245
+    283
+    ```
+
+En principe, la mémoire RAM totale à disposition de ces processus ainsi que de leurs éventuels enfants devrait être limitée à 20 MB. Pour m'en assurer, je vais créer un programme qui va tenter d'allouer une mémoire plus grande et de la remplir avec des zéros :
+
+```c
+#include <stdlib.h>
+#include <stdio.h>
+#include <errno.h>      // gestion des messages d'erreurs
+
+#define SIZE_IN_BYTES 20000000
+
+int main(int argc, char* argv[])
+{
+    // allocate 20 MB of memory
+    char *ptr;
+    ptr = malloc(SIZE_IN_BYTES);
+    if(ptr == NULL) {
+        perror("memory allocation");
+        exit(EXIT_FAILURE);
+    }
+
+    // fill memory with zeroes
+    for(int i=0; i<SIZE_IN_BYTES; i++){
+        ptr[i] = 0;
+    }
+
+    // print memory content
+    for(int i=0; i<SIZE_IN_BYTES; i++){
+        printf("%d",ptr[i]);
+    }
+
+    // free memory
+    free(ptr);
+    ptr = NULL;
+    
+    return 0;
+}
+```
+
+Lorsque la définition __SIZE_IN_BYTES__ est à 20M, limite de la mémoire utilisée dans notre cas, le programme se comporte comme prévu. En revanche, si la quantité d'octets à allouer est passée à 30M, le processus est "tué" immédiatement, comme le montre l'extrait du terminal suivant :
+
+```bash
+# ./app
+Killed
+```
+
+### Contrôle des ressources CPU
+
+
 
 ### Questions
 
 # 3. Performances
-
 

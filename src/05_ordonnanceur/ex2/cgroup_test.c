@@ -1,17 +1,32 @@
-#define _GNU_SOURCE     // attribution des coeurs cpu aux processus
 #include <stdlib.h>
 #include <stdio.h>
-#include <string.h>
-#include <unistd.h>     // for read and write sys. calls
 #include <errno.h>      // gestion des messages d'erreurs
-#include <signal.h>     // interception des signaux
-#include <sched.h>      // thread
-#include <sys/types.h>  // pour l'utilisation de socketpair
-#include <sys/socket.h> // ""
 
+#define SIZE_IN_BYTES 30000000
 
 int main(int argc, char* argv[])
 {
+    // allocate 20 MB of memory
+    char *ptr;
+    ptr = malloc(SIZE_IN_BYTES);
+    if(ptr == NULL) {
+        perror("memory allocation");
+        exit(EXIT_FAILURE);
+    }
 
+    // fill memory with zeroes
+    for(int i=0; i<SIZE_IN_BYTES; i++){
+        ptr[i] = 0;
+    }
+
+    // print memory content
+    for(int i=0; i<SIZE_IN_BYTES; i++){
+        printf("%d",ptr[i]);
+    }
+
+    // free memory
+    free(ptr);
+    ptr = NULL;
+    
     return 0;
 }
