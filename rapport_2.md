@@ -99,7 +99,7 @@ Voici le détail des étapes réalisées :
       perror("parent reading");
   ```
 
-* __Fork__ et configuration des _cpu sets_
+* __Fork et configuration des _cpu sets___
 
   Dans le main, toujours, on crée un fork du thread principal :
 
@@ -141,9 +141,25 @@ Voici le détail des étapes réalisées :
       }
   ```
 
+* __Fermeture de l'application__
+
   Dans la routine du processus enfant, on écrit le _PID_ dans une variable globale, il servira au parent à lui envoyer un signal _kill_ en temps voulu.
 
-### Questions
+  Lorsque le message reçu par le processus parent correspond au mot "exit", il envoi un signal __SIGKILL__ au processus enfant à l'aide de l'appel système __kill__. Puis, il se termine lui-même.
+
+  ```c
+  if(strcmp(buf, "exit") == 0){            
+      // kill child process
+      int ret = kill(child_pid, SIGKILL);
+      if (ret == -1) {
+          perror("kill");
+          exit(EXIT_FAILURE);
+      }
+  
+      // exit main process
+      exit(EXIT_SUCCESS);
+  }
+  ```
 
 ## CGroups
 

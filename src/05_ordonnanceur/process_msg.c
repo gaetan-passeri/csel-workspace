@@ -58,9 +58,7 @@ void parent_routine(){
         printf("\nbuf : %s", buf);        
 
         res = strcmp(buf, "exit");
-        printf("\nstrcomp result : %d", res);
         if(res == 0){
-            printf("\nkill that bitch");
             // kill child process
             int ret = kill(child_pid, SIGKILL);
             if (ret == -1) {
