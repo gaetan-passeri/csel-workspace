@@ -242,6 +242,8 @@ Les groupes de contrôles _CGroups_ Linux permettent de limiter les ressources m
     283
     ```
 
+### Vérification de la limitation de mémoire accessible
+
 En principe, la mémoire RAM totale à disposition de ces processus ainsi que de leurs éventuels enfants devrait être limitée à 20 MB. Pour m'en assurer, je vais créer un programme qui va tenter d'allouer une mémoire plus grande et de la remplir avec des zéros :
 
 ```c
@@ -286,11 +288,65 @@ Lorsque la définition __SIZE_IN_BYTES__ est à 20M, limite de la mémoire utili
 Killed
 ```
 
-### Contrôle des ressources CPU
+On peut vérifier la mémoire disponible restante à tout moment en lisant la propriété __memory.usage_in_bytes__ de la façon suivante :
 
+```bash
+cat /sys/fs/cgroup/memory/mem/memory.usage_in_bytes
+```
 
+### Contrôle des ressources CPU et vérification
 
-### Questions
+On souhaite à présent limiter l'utilisation des cœurs du processeur à un certain nombre pour les processus concernés. Pour ce faire, on commence par ajouter un groupe de contrôle __cpuset__ dans le _CGroup_ de l'exercice précédent. On crée les deux sous-groupes _high_ et _low_ pour le contrôle des CPU.
+
+Les quatre dernières lignes de l'extrait de code ci-dessous configurent les cœurs pouvant être utilisés par les sous-groupes _low_ et _high_. Par exemple, dans notre cas, tous les processus placés dans le sous-groupe _low_ seront exécutés dans le cœur 2 du processeur alors que tous les processus placés dans le sous-groupe _high_ seront exécutés dans le cœur 3.
+
+```bash
+$ mkdir /sys/fs/cgroup/cpuset
+$ mount -t cgroup -o cpu,cpuset cpuset /sys/fs/cgroup/cpuset
+$ mkdir /sys/fs/cgroup/cpuset/high
+$ mkdir /sys/fs/cgroup/cpuset/low
+$ echo 3 > /sys/fs/cgroup/cpuset/high/cpuset.cpus
+$ echo 0 > /sys/fs/cgroup/cpuset/high/cpuset.mems
+$ echo 2 > /sys/fs/cgroup/cpuset/low/cpuset.cpus
+$ echo 0 > /sys/fs/cgroup/cpuset/low/cpuset.mems
+```
+
+Le code de test se contente de faire un _fork_ et d'exécuter dans chaque processus une incrémentation d'une variable dans une boucle infinie. en lançant le programme sur la cible en tâche de fond et en utilisant la commande _htop_, on observe que deux des CPUs sont bien utilisés à 100%. La liste des processus permet de confirmer que les coupables sont bien nos deux processus !
+
+```bash
+top - 03:49:30 up  2:14,  1 user,  load average: 2.07, 1.81, 1.04
+Tasks:  95 total,   3 running,  92 sleeping,   0 stopped,   0 zombie
+%Cpu0  :   0.0/0.0     0[                                                                                                    ]
+%Cpu1  : 100.0/0.0   100[||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||]
+%Cpu2  : 100.0/0.0   100[||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||]
+%Cpu3  :   0.6/1.3     2[||                                                                                                  ]
+GiB Mem :  8.7/0.5      [                                                                                                    ]
+GiB Swap:  0.0/0.0      [                                                                                                    ]
+
+  PID USER      PR  NI    VIRT    RES  %CPU  %MEM     TIME+ S COMMAND
+    1 root      20   0    2.9m   0.3m   0.0   0.1   0:01.78 S init
+  160 root      20   0    2.9m   0.3m   0.0   0.1   0:00.01 S  `- /sbin/syslogd -n
+  164 root      20   0    2.9m   0.3m   0.0   0.1   0:00.01 S  `- /sbin/klogd -n
+  176 root      20   0    3.3m   2.2m   0.0   0.5   0:00.14 S  `- /sbin/mdev -df
+  240 root      20   0    6.3m   2.0m   0.0   0.4   0:00.00 S  `- sshd: /usr/sbin/sshd [listener] 0 of 10-100 startups
+  243 root      20   0    6.4m   4.5m   0.0   0.9   0:04.36 S      `- sshd: root@pts/0
+  245 root      20   0    2.9m   2.2m   0.0   0.5   0:00.23 S          `- -sh
+  312 root      20   0    2.1m   0.2m 100.0   0.0  10:45.06 R              `- ./app
+  313 root      20   0    2.1m   0.1m  99.4   0.0  10:44.96 R                  `- ./app
+  315 root      20   0    3.4m   2.2m   1.3   0.5   0:08.71 R              `- top                                                                                                                                
+```
+
+Si on ouvre deux terminaux et que l'on ajoute le processus courant de chacun dans les sous groupes, respectivement _low_ et _high_, on constate que lors de l'exécution du programme sur un de ces terminaux, les deux processus du programme ne s'exécutent que dans le cœur configuré pour le sous-groupe correspondant.
+
+En revanche, si on mets à disposition tous les cœurs pour un sous-groupe, par exemple, pour le sous-groupe _high_ : 
+
+```bash
+echo 0 1 2 3 > /sys/fs/cgroup/cpuset/high/cpuset.cpus
+```
+
+et que l'on exécute le programme dans le terminal qui y a été placé, les deux processus du programme utilisent les quatre cœurs du processeurs. Tous sont alors saturés.
+
+L'attribut __cpu.shares__ permet de répartir le temps CPU entre différents groupes de contrôle. Si on souhaitait exécuter deux processus sur un même cœur et attribuer 25% de temps CPU à un processus et 75% à l'autre, il faudrait créer deux groupes, attribuer le même cœur à ces deux groupes, et configurer différemment l'attribut __cpu.shares__ pour chacun.
 
 # 3. Performances
 
