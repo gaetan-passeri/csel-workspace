@@ -12,19 +12,22 @@ module_param(text, charp, 0664);
 static int  elements = 1;
 module_param(elements, int, 0);
 
-const char * cpu_thermal = "cpu-thermal ";
+const char *cpu_thermal = "cpu-thermal";
 
-static int __init skeleton_init(void)
-{
-	pr_info ("Linux module fan management loaded\n");
-	//pr_debug ("  text: %s\n  elements: %d\n", text, elements);
-	pr_debug("sjkdas");
+static int timer_callback(){
 	struct thermal_zone_device* thermal_zone = thermal_zone_get_zone_by_name (cpu_thermal);
 	int temp;
 	
 	thermal_zone_get_temp(thermal_zone, &temp);
 
 	pr_info("CPU temperature : %d",temp);
+}
+
+static int __init skeleton_init(void)
+{
+	pr_info ("Linux module fan management loaded\n");	
+
+	timer_setup(timer, timer_callback, TIMER_MONOTONIC);
 
 	return 0;
 }
