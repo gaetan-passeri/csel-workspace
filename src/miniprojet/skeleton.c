@@ -17,17 +17,25 @@ const char *cpu_thermal = "cpu-thermal";
 static struct timer_list my_timer;
 
 static void timer_callback(struct timer_list *timer){
-	int ret, temp;
-	
+	// ---- method called all 1/2*f seconds----------
+
+	int ret, temp, interval_ms;
+
+	// reverse status led state
+	// ...
+
 	// printk("%s called (%ld)\n", __func__, jiffies);	
 
 	// get and print cpu temp
 	struct thermal_zone_device* thermal_zone = thermal_zone_get_zone_by_name (cpu_thermal);
 	thermal_zone_get_temp(thermal_zone, &temp);
 	pr_info("CPU temperature : %d",temp);
+
+	// process next interval depending on set frequency
+	interval_ms = 1/2*frequency_Hz;
 	
 	// set next timer interval and restart
-	ret = mod_timer(&my_timer, jiffies + msecs_to_jiffies(2000));
+	ret = mod_timer(&my_timer, jiffies + msecs_to_jiffies(interval_ms));
 	if (ret)
 		pr_err("%s: Timer firing failed\n", __func__);
 }
@@ -37,7 +45,7 @@ static int __init skeleton_init(void)
 	int ret;
 	pr_info ("Linux module fan management loaded\n");
 
-	// set timer
+	// set time
 	timer_setup(&my_timer, timer_callback, CLOCK_MONOTONIC);
 	pr_info("%s: Setup timer to fire in 2s (%ld)\n", __func__, jiffies);
 
