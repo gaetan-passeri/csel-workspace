@@ -1,3 +1,14 @@
 tu pue Glenn
 
+test device :
+
+cat /sys/class/fan_management_class/fan_management/frequency
+echo "10" > /sys/class/fan_management_class/fan_management/frequency
+
+# mode AUTO
+echo "0" > /sys/class/fan_management_class/fan_management/mode
+
+# mode MAN
+echo "1" > /sys/class/fan_management_class/fan_management/mode
+
 logs daemon : cat /var/log/messages
