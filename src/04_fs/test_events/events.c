@@ -53,6 +53,10 @@ static int open_switchs(){
     write(f, "in", 2);
     close(f);
 
+    f = open(SW_K2 "/edge",O_WRONLY);
+    write(f,"rising",6);
+    close(f);
+
     return f;
 }
 
@@ -85,7 +89,7 @@ int main(int argc, char* argv[])
     }
 
     struct epoll_event event = {
-        .events = EPOLLIN | EPOLLET,// EPOLLET,
+        .events = EPOLLIN | EPOLLOUT, //EPOLLET, EPOLLIN | EPOLLET,
         .data.fd = f_k1,
     };
 
@@ -97,11 +101,11 @@ int main(int argc, char* argv[])
 
     while (1)
     {
+        printf("before wait\n");
         int nr = epoll_wait(epfd, &event, 2, -1);
         if (nr == -1)
             printf("ERROR : epoll wait\n");
-        printf("wait\n");
-
+        printf("after wait\n");
 
         for (int i=0; i<nr; i++) {
             // printf ("event=%ld on fd=%d\n", events[i].events, events[i].data.fd);

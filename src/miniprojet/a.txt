@@ -1,1 +1,3 @@
 tu pue Glenn
+
+logs daemon : cat /var/log/messages
