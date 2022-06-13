@@ -1,14 +1,36 @@
-tu pue Glenn
+Commandes de test
+=================
 
-test device :
+## Commandes standard
 
+* display process list :
+ps -aux
+
+## test module noyau
+
+* lecture et configuration fréquence 
 cat /sys/class/fan_management_class/fan_management/frequency
 echo "10" > /sys/class/fan_management_class/fan_management/frequency
 
-# mode AUTO
+* mode AUTO
 echo "0" > /sys/class/fan_management_class/fan_management/mode
 
-# mode MAN
+* mode MAN
 echo "1" > /sys/class/fan_management_class/fan_management/mode
 
-logs daemon : cat /var/log/messages
+## Daemon
+
+cd /workspace/src/miniprojet/daemon/
+
+// si le fichier existe déjà. (pas d'erreur si il est déjà existant ;))
+rm /opt/myfifo
+
+./daemon
+
+// => le fichier /opt/myfifo (fifo) est créé si il n'existe pas déjà
+
+// tous les signaux sont interceptés => unique moyen de quitter le daemon :
+echo -n "exit" > /opt/myfifo
+
+// affichage des logs du daemon
+cat /var/log/messages

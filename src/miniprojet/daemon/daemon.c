@@ -28,6 +28,8 @@
 #include <sys/types.h>
 #include <syslog.h>
 #include <unistd.h>
+#include <string.h>
+#include <errno.h>
 
 #define UNUSED(x) (void)(x)
 
@@ -56,6 +58,10 @@ static void fork_process()
 
 int main(int argc, char* argv[])
 {
+    int fd; // to use fifo file
+    int fifo_msg_len;
+    char fifo_buf[100];
+    
     UNUSED(argc);
     UNUSED(argv);
 
@@ -76,7 +82,7 @@ int main(int argc, char* argv[])
         .sa_handler = catch_signal,
     };
     sigaction(SIGHUP, &act, NULL);   //  1 - hangup
-    sigaction(SIGINT, &act, NULL);   //  2 - terminal interrupt
+    sigaction(SIGINT, &act, NULL);   //  2 - terminal interrupt -- enable for testing
     sigaction(SIGQUIT, &act, NULL);  //  3 - terminal quit
     sigaction(SIGABRT, &act, NULL);  //  6 - abort
     sigaction(SIGTERM, &act, NULL);  // 15 - termination
@@ -137,11 +143,44 @@ int main(int argc, char* argv[])
         exit(1);
     }
 
+    int pid = getpid();
+
+    syslog(LOG_INFO, "daemon's PID : %d\n", pid); 
+
+
+    // create named pipe FIFO file in /opt/
+    char * myfifo = "myfifo";
+    int res = mkfifo("myfifo", 0666);
+    if(res == -1){ 
+        syslog(LOG_INFO,
+        "error %d creating fifo file\n",
+        errno);
+    }
+
+    // open fifo file
+    fd = open ("myfifo", O_RDWR);
+    if (fd == -1)
+        syslog(LOG_INFO,
+           "error : %d, creating fifo file in %s\n",
+           errno, myfifo);
+
+
     // 13. implement daemon body...
-    int t = 30;
-    do {
-        t = sleep(t);
-    } while (t > 0);
+
+    while(1) {
+        // get fifo messages
+        fifo_msg_len = read(fd, fifo_buf, sizeof(fifo_buf));
+        if(fifo_msg_len > 0){
+            syslog(LOG_INFO, "fifo received msg : %s\n", fifo_buf);
+            fifo_buf[fifo_msg_len] = 0;
+            if(strcmp(fifo_buf, "exit") == 0) {
+                break;
+            }
+        }
+    }
+
+    // close fifo file
+    close(fd);
 
     syslog(LOG_INFO,
            "daemon stopped. Number of signals catched=%d\n",
