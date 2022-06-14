@@ -10,7 +10,7 @@
 #include <linux/device.h>  // needed for sysfs
 
 #define LED 10
-char * Led_labe = "LED";
+char * Led_label = "LED";
 
 static struct class* sysfs_class;
 static struct device* sysfs_device;
@@ -25,29 +25,29 @@ static int led_state = 0;
 
 // ------- Sysfs class  -------
 ssize_t sysfs_show_mode(struct device* dev, struct device_attribute* attr, char* buf) {
-    sprintf(buf, "%d\n", current_mode);  // copy formatted attribute to buf
-    return strlen(buf);         // return buf size
+    sprintf(buf, "%d\n", current_mode);	// copy formatted attribute to buf
+    return strlen(buf);         		// return buf size
 }
 
 ssize_t sysfs_store_mode(struct device* dev, struct device_attribute* attr, const char* buf, size_t count) {    
-    current_mode = simple_strtol( // set val with buf (simple_strtol => convert string to int)
-        buf,    // string buffer
-        0,      // end char
-        10);    // base (int)
+    current_mode = simple_strtol(		// set val with buf (simple_strtol => convert string to int)
+        buf,    						// string buffer
+        0,      						// end char
+        10);    						// base (int)
     return count;                       // return value size
 }
 
 ssize_t sysfs_show_frequency(struct device* dev, struct device_attribute* attr, char* buf) {
-    sprintf(buf, "%d\n", frequency_Hz);  // copy formatted attribute to buf
-    return strlen(buf);         // return buf size
+    sprintf(buf, "%d\n", frequency_Hz);	// copy formatted attribute to buf
+    return strlen(buf);        			// return buf size
 }
 
 ssize_t sysfs_store_frequency(struct device* dev, struct device_attribute* attr, const char* buf, size_t count) {    
-    frequency_Hz = simple_strtol( // set val with buf (simple_strtol => convert string to int)
-        buf,    // string buffer
-        0,      // end char
-        10);    // base (int)
-    return count;                   // return value size
+    frequency_Hz = simple_strtol(		// set val with buf (simple_strtol => convert string to int)
+        buf,    						// string buffer
+        0,      						// end char
+        10);    						// base (int)
+    return count;                   	// return value size
 }
 
 DEVICE_ATTR(mode, 0664, sysfs_show_mode, sysfs_store_mode);
@@ -63,7 +63,7 @@ static void timer_callback(struct timer_list *timer){
 	led_state = !led_state;
 	gpio_set_value(LED, led_state);
 
-	// get and print cpu temp
+	// get cpu temp
 	struct thermal_zone_device* thermal_zone = thermal_zone_get_zone_by_name (cpu_thermal);
 	thermal_zone_get_temp(thermal_zone, &temp);
 
@@ -115,7 +115,7 @@ static int __init skeleton_init(void)
 	// ------ init GPIO ------
 
 	int status;
-    status = gpio_request(LED,Led_labe);
+    status = gpio_request(LED,Led_label);
 
 	gpio_direction_output(LED, led_state);
 
