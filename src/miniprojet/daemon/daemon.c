@@ -134,14 +134,14 @@ int main(int argc, char* argv[])
     }
 
     // 12. option: change effective user and group id for appropriate's one
-    if (setegid(pwd->pw_gid) == -1) {
-        syslog(LOG_ERR, "ERROR while setting new effective group id");
-        exit(1);
-    }
-    if (seteuid(pwd->pw_uid) == -1) {
-        syslog(LOG_ERR, "ERROR while setting new effective user id");
-        exit(1);
-    }
+    // if (setegid(pwd->pw_gid) == -1) {
+    //     syslog(LOG_ERR, "ERROR while setting new effective group id");
+    //     exit(1);
+    // }
+    // if (seteuid(pwd->pw_uid) == -1) {
+    //     syslog(LOG_ERR, "ERROR while setting new effective user id");
+    //     exit(1);
+    // }
 
     int pid = getpid();
 
@@ -171,8 +171,8 @@ int main(int argc, char* argv[])
         // get fifo messages
         fifo_msg_len = read(fd, fifo_buf, sizeof(fifo_buf));
         if(fifo_msg_len > 0){
-            syslog(LOG_INFO, "fifo received msg : %s\n", fifo_buf);
             fifo_buf[fifo_msg_len] = 0;
+            syslog(LOG_INFO, "fifo received msg : %s\n", fifo_buf);
             if(strcmp(fifo_buf, "exit") == 0) {
                 break;
             }
