@@ -161,7 +161,7 @@ int main(int argc, char* argv[])
     fd = open ("myfifo", O_RDWR);
     if (fd == -1)
         syslog(LOG_INFO,
-           "error : %d, creating fifo file in %s\n",
+           "error : %d, opening fifo file in %s\n",
            errno, myfifo);
 
 
