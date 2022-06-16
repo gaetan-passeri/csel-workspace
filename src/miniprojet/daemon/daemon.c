@@ -34,6 +34,9 @@
 #define UNUSED(x) (void)(x)
 
 static int signal_catched = 0;
+char fifo_buf[100];
+char *cmd;
+char *value;
 
 static void catch_signal(int signal)
 {
@@ -56,11 +59,28 @@ static void fork_process()
     }
 }
 
+void write_attr(char *attr, char *value){
+    // build attribute path in sysfs
+    char path[80] = "/sys/class/fan_management_class/fan_management/";
+    strcat(path, attr);
+
+    // open /sys file
+    int fd_driver = open(path, O_WRONLY);
+        if (fd_driver == -1)
+            syslog(LOG_INFO,
+                "error : %d, opening driver attribute\n",
+                errno);
+    
+    // write attribute value
+    write(fd_driver, value, strlen(value));
+
+    close(fd_driver);
+}
+
 int main(int argc, char* argv[])
 {
-    int fd; // to use fifo file
+    int fd_fifo; // to use fifo file
     int fifo_msg_len;
-    char fifo_buf[100];
     
     UNUSED(argc);
     UNUSED(argv);
@@ -92,7 +112,7 @@ int main(int argc, char* argv[])
     umask(0027);
 
     // 6. change working directory to appropriate place
-    if (chdir("/opt") == -1) {
+    if (chdir("/") == -1) {
         syslog(LOG_ERR, "ERROR while changing to working directory");
         exit(1);
     }
@@ -133,6 +153,7 @@ int main(int argc, char* argv[])
         exit(1);
     }
 
+    // the step 12 is not done because root right is needed to open fifo file.
     // 12. option: change effective user and group id for appropriate's one
     // if (setegid(pwd->pw_gid) == -1) {
     //     syslog(LOG_ERR, "ERROR while setting new effective group id");
@@ -143,14 +164,14 @@ int main(int argc, char* argv[])
     //     exit(1);
     // }
 
+    // 13. implement daemon body...
     int pid = getpid();
 
     syslog(LOG_INFO, "daemon's PID : %d\n", pid); 
 
-
     // create named pipe FIFO file in /opt/
     char * myfifo = "myfifo";
-    int res = mkfifo("myfifo", 0666);
+    int res = mkfifo("/tmp/myfifo", 0666);
     if(res == -1){ 
         syslog(LOG_INFO,
         "error %d creating fifo file\n",
@@ -158,29 +179,42 @@ int main(int argc, char* argv[])
     }
 
     // open fifo file
-    fd = open ("myfifo", O_RDWR);
-    if (fd == -1)
+    fd_fifo = open ("/tmp/myfifo", O_RDWR);
+    if (fd_fifo == -1)
         syslog(LOG_INFO,
            "error : %d, opening fifo file in %s\n",
            errno, myfifo);
 
-
-    // 13. implement daemon body...
-
     while(1) {
         // get fifo messages
-        fifo_msg_len = read(fd, fifo_buf, sizeof(fifo_buf));
+        fifo_msg_len = read(fd_fifo, fifo_buf, sizeof(fifo_buf));
         if(fifo_msg_len > 0){
             fifo_buf[fifo_msg_len] = 0;
             syslog(LOG_INFO, "fifo received msg : %s\n", fifo_buf);
+
             if(strcmp(fifo_buf, "exit") == 0) {
                 break;
+            } else{
+                syslog(LOG_INFO, "test après if exit\n");
+
+                cmd = strtok(fifo_buf, " ");
+                if(cmd != NULL){
+                    value = strtok(NULL, " ");
+                }
             }
+
+            syslog(LOG_INFO, "test après strtok\n");
+
+            syslog(LOG_INFO, "test cmd : %s\n", cmd);
+            
+            syslog(LOG_INFO, "cmd : %s, value %s\n", cmd, value);
+
+            write_attr(cmd, value);
         }
     }
 
     // close fifo file
-    close(fd);
+    close(fd_fifo);
 
     syslog(LOG_INFO,
            "daemon stopped. Number of signals catched=%d\n",

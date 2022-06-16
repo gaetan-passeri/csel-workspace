@@ -18,7 +18,7 @@ void exit_app(){
 
 void send_cfg_to_fifo(char *cmd_line){
     // open fifo file
-    int fd = open ("/opt/myfifo", O_WRONLY);
+    int fd = open ("/tmp/myfifo", O_WRONLY);
     if (fd == -1)
         perror("error opening fifo file");
 
@@ -63,6 +63,7 @@ int main(int argc, char* argv[])
         fgets(buf, 32, stdin);
         // close app
         if(strcmp(buf, "exit\n")==0){
+            send_cfg_to_fifo("exit"); // to test
             exit_app();
         }
         else if(strcmp(buf, "help\n")==0){
@@ -74,13 +75,18 @@ int main(int argc, char* argv[])
             if(cmd != NULL){
                 value = strtok(NULL, " ");
             }
-            if(strcmp(cmd, "set_mode") == 0 && value != NULL){
-                //printf("mode : %d\n", atoi(value));
-                sprintf(line_cmd, "mode %d", atoi(value));
+            value[strlen(value)-1] = 0;
+            if((strcmp(cmd, "set_mode") == 0) && ((strcmp(value, "AUTO") == 0) | (strcmp(value, "MAN") == 0))) {
+                // build cmd line
+                if(strcmp(value, "AUTO") == 0){
+                    sprintf(line_cmd, "mode %d", 0);
+                } else {
+                    sprintf(line_cmd, "mode %d", 1);
+                }
+                // write cmd line to FIFO
                 send_cfg_to_fifo(line_cmd);
-            }else if (strcmp(cmd, "set_frequency") == 0)
+            }else if (strcmp(cmd, "set_frequency") == 0 && atoi(value) >= 1 && atoi(value) <= 100)
             {
-                printf("frequency : %d\n", atoi(value));
                 sprintf(line_cmd, "frequency %d", atoi(value));
                 send_cfg_to_fifo(line_cmd);
             }else {
