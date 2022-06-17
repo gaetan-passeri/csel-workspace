@@ -63,7 +63,7 @@ int main(int argc, char* argv[])
         fgets(buf, 32, stdin);
         // close app
         if(strcmp(buf, "exit\n")==0){
-            send_cfg_to_fifo("exit"); // to test
+            // send_cfg_to_fifo("exit"); // to simplifying tests
             exit_app();
         }
         else if(strcmp(buf, "help\n")==0){
